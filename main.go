@@ -15,8 +15,8 @@ import (
 
 const (
 	boxTextWidth = 20 // max characters per line inside a box
-	canvasWidth  = 220
-	canvasHeight = 110
+	canvasWidth  = 150
+	canvasHeight = 60
 	boxMargin    = 1 // minimum empty gap kept between boxes
 )
 
@@ -44,14 +44,14 @@ var samplePhrases = []string{
 }
 
 var borderColors = []lipgloss.Color{
-	lipgloss.Color("205"),
-	lipgloss.Color("39"),
-	lipgloss.Color("214"),
-	lipgloss.Color("120"),
-	lipgloss.Color("99"),
-	lipgloss.Color("196"),
-	lipgloss.Color("45"),
-	lipgloss.Color("227"),
+	lipgloss.Color("#FF6AC1"),
+	lipgloss.Color("#4EA8DE"),
+	lipgloss.Color("#FFB454"),
+	lipgloss.Color("#7EE787"),
+	lipgloss.Color("#B399FF"),
+	lipgloss.Color("#FF6B6B"),
+	lipgloss.Color("#4EEAFF"),
+	lipgloss.Color("#F5E663"),
 }
 
 // box is a piece of text rendered inside a rounded border, positioned
@@ -134,6 +134,25 @@ func rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh int) bool {
 	return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by
 }
 
+// boxesCentroid returns the center point of the bounding box that encloses
+// all boxes, so the initial viewport can be aimed at where the content
+// actually is rather than the middle of the (mostly empty) canvas.
+func boxesCentroid(boxes []box) (int, int) {
+	if len(boxes) == 0 {
+		return canvasWidth / 2, canvasHeight / 2
+	}
+
+	minX, minY := boxes[0].x, boxes[0].y
+	maxX, maxY := boxes[0].x+boxes[0].width, boxes[0].y+boxes[0].height
+	for _, b := range boxes[1:] {
+		minX = min(minX, b.x)
+		minY = min(minY, b.y)
+		maxX = max(maxX, b.x+b.width)
+		maxY = max(maxY, b.y+b.height)
+	}
+	return (minX + maxX) / 2, (minY + maxY) / 2
+}
+
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -147,12 +166,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
+		firstResize := m.viewportW == 0 && m.viewportH == 0
 		m.viewportW = msg.Width
 		m.viewportH = msg.Height
-		// Start the view roughly centered on the canvas.
-		if m.offsetX == 0 && m.offsetY == 0 {
-			m.offsetX = (canvasWidth - m.viewportW) / 2
-			m.offsetY = (canvasHeight - m.viewportH) / 2
+		// Start the view centered on the boxes themselves, not the empty
+		// canvas: with boxes scattered sparsely, centering on the canvas
+		// midpoint could easily land on a patch with nothing visible.
+		if firstResize {
+			cx, cy := boxesCentroid(m.boxes)
+			m.offsetX = cx - m.viewportW/2
+			m.offsetY = cy - m.viewportH/2
 		}
 
 	case tea.MouseMsg:
@@ -183,6 +206,19 @@ func (m model) View() string {
 		return ""
 	}
 
+	grid, owner := m.buildGrid()
+
+	lines := make([]string, m.viewportH)
+	for i := range grid {
+		lines[i] = renderRow(grid[i], owner[i], m.boxes)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// buildGrid composites the boxes currently visible in the viewport into a
+// plain (ANSI-free) rune grid, alongside a parallel grid recording which
+// box (by index into m.boxes, or -1) owns each cell.
+func (m model) buildGrid() ([][]rune, [][]int) {
 	grid := make([][]rune, m.viewportH)
 	owner := make([][]int, m.viewportH)
 	for i := range grid {
@@ -219,11 +255,7 @@ func (m model) View() string {
 		}
 	}
 
-	lines := make([]string, m.viewportH)
-	for i := range grid {
-		lines[i] = renderRow(grid[i], owner[i], m.boxes)
-	}
-	return strings.Join(lines, "\n")
+	return grid, owner
 }
 
 // renderRow turns a row of runes and their owning box indices into a
