@@ -204,59 +204,51 @@ func buildDemoScene() ([]box, []edge) {
 	return boxes, edges
 }
 
-// drawLine plots a straight connector line from e.x1,e.y1 to e.x2,e.y2
-// using Bresenham's algorithm, choosing a box-drawing character that
-// matches the line's direction, and reports each point through set.
-func drawLine(e edge, set func(x, y int, r rune, c lipgloss.Color)) {
-	dx, dy := e.x2-e.x1, e.y2-e.y1
-
-	ch := '─'
-	switch {
-	case dx == 0:
-		ch = '│'
-	case dy == 0:
-		ch = '─'
-	case (dy > 0) == (dx > 0):
-		ch = '╲'
-	default:
-		ch = '╱'
-	}
-
-	x, y := e.x1, e.y1
-	absDX, absDY := abs(dx), abs(dy)
-	sx, sy := sign(dx), sign(dy)
-	errTerm := absDX - absDY
-	for {
-		set(x, y, ch, edgeColor)
-		if x == e.x2 && y == e.y2 {
-			break
-		}
-		e2 := 2 * errTerm
-		if e2 > -absDY {
-			errTerm -= absDY
-			x += sx
-		}
-		if e2 < absDX {
-			errTerm += absDX
-			y += sy
-		}
-	}
+// edgeCell is a single character position belonging to a drawn edge.
+type edgeCell struct {
+	x, y int
+	ch   rune
 }
 
-func abs(n int) int {
-	if n < 0 {
-		return -n
+// edgeCells computes an orthogonal (elbow) connector from e.x1,e.y1 to
+// e.x2,e.y2: out horizontally from the parent, a vertical jog at the
+// midpoint between the two columns, then horizontally into the child.
+// Corners use rounded box-drawing characters to match the box borders.
+// Siblings sharing a parent and column also share their jog's x
+// position, so they read as branches off one vertical trunk.
+//
+// Straight cells and corner cells are returned separately: when several
+// sibling edges share a trunk column, one sibling's vertical stroke can
+// pass directly through another's corner cell, so callers must draw every
+// edge's straight cells first and only then draw corners on top, or a
+// longer sibling's trunk stroke will stomp a shorter sibling's elbow.
+func edgeCells(e edge) (straights, corners []edgeCell) {
+	if e.y1 == e.y2 {
+		for x := e.x1; x <= e.x2; x++ {
+			straights = append(straights, edgeCell{x, e.y1, '─'})
+		}
+		return straights, nil
 	}
-	return n
-}
 
-func sign(n int) int {
-	switch {
-	case n > 0:
-		return 1
-	case n < 0:
-		return -1
-	default:
-		return 0
+	midX := (e.x1 + e.x2) / 2
+	for x := e.x1; x < midX; x++ {
+		straights = append(straights, edgeCell{x, e.y1, '─'})
 	}
+	for x := midX + 1; x <= e.x2; x++ {
+		straights = append(straights, edgeCell{x, e.y2, '─'})
+	}
+
+	dy := 1
+	corner1, corner2 := '╮', '╰' // going down: west+south, then north+east
+	if e.y2 < e.y1 {
+		dy = -1
+		corner1, corner2 = '╯', '╭' // going up: west+north, then south+east
+	}
+	corners = append(corners, edgeCell{midX, e.y1, corner1})
+	for y := e.y1 + dy; y != e.y2; y += dy {
+		straights = append(straights, edgeCell{midX, y, '│'})
+	}
+	corners = append(corners, edgeCell{midX, e.y2, corner2})
+
+	return straights, corners
 }

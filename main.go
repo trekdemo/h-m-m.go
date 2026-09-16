@@ -144,8 +144,20 @@ func (m model) buildGrid() ([][]rune, [][]string) {
 		color[sy][sx] = string(c)
 	}
 
+	// Draw every edge's straight segments first, then every edge's corners:
+	// sibling edges sharing a trunk column can have one's vertical stroke
+	// pass through another's corner cell, so corners must always be drawn
+	// last to avoid being overwritten by an unrelated straight segment.
+	var allCorners []edgeCell
 	for _, e := range m.edges {
-		drawLine(e, set)
+		straights, corners := edgeCells(e)
+		for _, p := range straights {
+			set(p.x, p.y, p.ch, edgeColor)
+		}
+		allCorners = append(allCorners, corners...)
+	}
+	for _, p := range allCorners {
+		set(p.x, p.y, p.ch, edgeColor)
 	}
 
 	for _, b := range m.boxes {
