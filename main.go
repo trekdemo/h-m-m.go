@@ -1,58 +1,16 @@
-// Command bubbletea-exp renders a pannable canvas of randomly placed,
-// non-overlapping text boxes. Click and drag with the mouse to pan the
-// canvas, similar to dragging a map around.
+// Command bubbletea-exp renders a pannable canvas containing a tree of
+// text boxes, laid out with a tree-specialized Sugiyama-style algorithm.
+// Click and drag with the mouse to pan the canvas, like dragging a map.
 package main
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-const (
-	boxTextWidth = 20 // max characters per line inside a box
-	canvasWidth  = 150
-	canvasHeight = 60
-	boxMargin    = 1 // minimum empty gap kept between boxes
-)
-
-var samplePhrases = []string{
-	"Hello",
-	"Bubble Tea",
-	"Lip Gloss makes styling terminal UIs a breeze",
-	"Canvas",
-	"Drag me around like a map",
-	"The quick brown fox jumps over the lazy dog",
-	"Terminal UI",
-	"Randomly placed",
-	"Non overlapping boxes",
-	"Rounded borders look nice",
-	"Go is fun",
-	"Panning works like Google Maps when you click and drag",
-	"Short",
-	"A slightly longer piece of sample text for variety",
-	"Charm",
-	"Word wrap at twenty characters maximum per line",
-	"Box",
-	"Another box with a medium amount of text inside it",
-	"Tiny",
-	"Yet another sample sentence to fill up space nicely",
-}
-
-var borderColors = []lipgloss.Color{
-	lipgloss.Color("#FF6AC1"),
-	lipgloss.Color("#4EA8DE"),
-	lipgloss.Color("#FFB454"),
-	lipgloss.Color("#7EE787"),
-	lipgloss.Color("#B399FF"),
-	lipgloss.Color("#FF6B6B"),
-	lipgloss.Color("#4EEAFF"),
-	lipgloss.Color("#F5E663"),
-}
 
 // box is a piece of text rendered inside a rounded border, positioned
 // somewhere on the virtual canvas.
@@ -67,67 +25,15 @@ type model struct {
 	viewportW, viewportH int
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	boxes                []box
+	edges                []edge
 
 	dragging     bool
 	lastX, lastY int
 }
 
 func newModel() model {
-	return model{
-		boxes: generateBoxes(),
-	}
-}
-
-// generateBoxes lays out a set of boxes at random positions on the virtual
-// canvas such that none of them overlap.
-func generateBoxes() []box {
-	var boxes []box
-
-	// No color is applied at render time: the returned string must stay
-	// free of ANSI escapes so it can be safely sliced rune-by-rune when
-	// composited onto the canvas. Color is applied per box afterwards.
-	plainStyle := lipgloss.NewStyle().
-		Width(boxTextWidth).
-		Padding(0, 1).
-		Border(lipgloss.RoundedBorder())
-
-	for _, phrase := range samplePhrases {
-		lines := strings.Split(plainStyle.Render(phrase), "\n")
-		h := len(lines)
-		w := 0
-		for _, l := range lines {
-			if lipgloss.Width(l) > w {
-				w = lipgloss.Width(l)
-			}
-		}
-
-		if w >= canvasWidth || h >= canvasHeight {
-			continue
-		}
-
-		const maxAttempts = 500
-		for attempt := 0; attempt < maxAttempts; attempt++ {
-			x := rand.Intn(canvasWidth - w)
-			y := rand.Intn(canvasHeight - h)
-
-			if !overlapsAny(boxes, x, y, w, h) {
-				color := borderColors[len(boxes)%len(borderColors)]
-				boxes = append(boxes, box{x: x, y: y, width: w, height: h, lines: lines, color: color})
-				break
-			}
-		}
-	}
-
-	return boxes
-}
-
-func overlapsAny(boxes []box, x, y, w, h int) bool {
-	for _, b := range boxes {
-		if rectsOverlap(x-boxMargin, y-boxMargin, w+2*boxMargin, h+2*boxMargin, b.x, b.y, b.width, b.height) {
-			return true
-		}
-	}
-	return false
+	boxes, edges := buildDemoScene()
+	return model{boxes: boxes, edges: edges}
 }
 
 func rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh int) bool {
@@ -135,11 +41,11 @@ func rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh int) bool {
 }
 
 // boxesCentroid returns the center point of the bounding box that encloses
-// all boxes, so the initial viewport can be aimed at where the content
-// actually is rather than the middle of the (mostly empty) canvas.
+// all boxes, so the initial viewport can be aimed at where the tree
+// actually is.
 func boxesCentroid(boxes []box) (int, int) {
 	if len(boxes) == 0 {
-		return canvasWidth / 2, canvasHeight / 2
+		return 0, 0
 	}
 
 	minX, minY := boxes[0].x, boxes[0].y
@@ -169,9 +75,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		firstResize := m.viewportW == 0 && m.viewportH == 0
 		m.viewportW = msg.Width
 		m.viewportH = msg.Height
-		// Start the view centered on the boxes themselves, not the empty
-		// canvas: with boxes scattered sparsely, centering on the canvas
-		// midpoint could easily land on a patch with nothing visible.
+		// Start the view centered on the tree itself, not the canvas
+		// origin: the tree can extend arbitrarily far right and down.
 		if firstResize {
 			cx, cy := boxesCentroid(m.boxes)
 			m.offsetX = cx - m.viewportW/2
@@ -206,75 +111,77 @@ func (m model) View() string {
 		return ""
 	}
 
-	grid, owner := m.buildGrid()
+	grid, color := m.buildGrid()
 
 	lines := make([]string, m.viewportH)
 	for i := range grid {
-		lines[i] = renderRow(grid[i], owner[i], m.boxes)
+		lines[i] = renderRow(grid[i], color[i])
 	}
 	return strings.Join(lines, "\n")
 }
 
-// buildGrid composites the boxes currently visible in the viewport into a
-// plain (ANSI-free) rune grid, alongside a parallel grid recording which
-// box (by index into m.boxes, or -1) owns each cell.
-func (m model) buildGrid() ([][]rune, [][]int) {
+// buildGrid composites the connector edges and boxes currently visible in
+// the viewport into a plain (ANSI-free) rune grid, alongside a parallel
+// grid recording the color each cell should be drawn in ("" for none).
+// Edges are drawn first so box borders always render cleanly on top.
+func (m model) buildGrid() ([][]rune, [][]string) {
 	grid := make([][]rune, m.viewportH)
-	owner := make([][]int, m.viewportH)
+	color := make([][]string, m.viewportH)
 	for i := range grid {
-		row := make([]rune, m.viewportW)
-		own := make([]int, m.viewportW)
-		for j := range row {
-			row[j] = ' '
-			own[j] = -1
+		grid[i] = make([]rune, m.viewportW)
+		color[i] = make([]string, m.viewportW)
+		for j := range grid[i] {
+			grid[i][j] = ' '
 		}
-		grid[i] = row
-		owner[i] = own
 	}
 
-	for bi, b := range m.boxes {
-		sx := b.x - m.offsetX
-		sy := b.y - m.offsetY
+	set := func(x, y int, r rune, c lipgloss.Color) {
+		sx, sy := x-m.offsetX, y-m.offsetY
+		if sx < 0 || sx >= m.viewportW || sy < 0 || sy >= m.viewportH {
+			return
+		}
+		grid[sy][sx] = r
+		color[sy][sx] = string(c)
+	}
+
+	for _, e := range m.edges {
+		drawLine(e, set)
+	}
+
+	for _, b := range m.boxes {
+		sx, sy := b.x-m.offsetX, b.y-m.offsetY
 		if sx+b.width <= 0 || sx >= m.viewportW || sy+b.height <= 0 || sy >= m.viewportH {
 			continue // fully off screen
 		}
-
 		for li, line := range b.lines {
-			row := sy + li
-			if row < 0 || row >= m.viewportH {
-				continue
-			}
-			col := sx
+			col := b.x
 			for _, r := range line {
-				if col >= 0 && col < m.viewportW {
-					grid[row][col] = r
-					owner[row][col] = bi
-				}
+				set(col, b.y+li, r, b.color)
 				col++
 			}
 		}
 	}
 
-	return grid, owner
+	return grid, color
 }
 
-// renderRow turns a row of runes and their owning box indices into a
-// string, colorizing contiguous runs that belong to the same box so that
-// ANSI escapes are never split across cells.
-func renderRow(runes []rune, owner []int, boxes []box) string {
+// renderRow turns a row of runes and their per-cell colors into a string,
+// colorizing contiguous same-color runs so ANSI escapes are never split
+// across cells.
+func renderRow(runes []rune, colors []string) string {
 	var sb strings.Builder
 	n := len(runes)
 	for i := 0; i < n; {
 		start := i
-		o := owner[i]
-		for i < n && owner[i] == o {
+		c := colors[i]
+		for i < n && colors[i] == c {
 			i++
 		}
 		run := string(runes[start:i])
-		if o == -1 {
+		if c == "" {
 			sb.WriteString(run)
 		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(boxes[o].color).Render(run))
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render(run))
 		}
 	}
 	return sb.String()
