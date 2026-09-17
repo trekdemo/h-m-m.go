@@ -70,7 +70,6 @@ type node struct {
 	box      box
 	parent   *node
 	children []*node
-	subtreeH int // cached: vertical span this node's whole subtree occupies
 	idx      int // index into the flattened boxes/nodes slices
 }
 
@@ -165,40 +164,100 @@ func layoutTree(root *node) {
 	}
 	assignX(root, 0)
 
-	var computeSubtreeHeights func(n *node) int
-	computeSubtreeHeights = func(n *node) int {
-		if len(n.children) == 0 {
-			n.subtreeH = n.box.height
-			return n.subtreeH
-		}
-		total := 0
-		for i, c := range n.children {
-			if i > 0 {
-				total += rowGap
-			}
-			total += computeSubtreeHeights(c)
-		}
-		n.subtreeH = max(total, n.box.height)
-		return n.subtreeH
-	}
-	computeSubtreeHeights(root)
+	layoutContour(root, 0)
+}
 
-	var place func(n *node, top int)
-	place = func(n *node, top int) {
-		if len(n.children) == 0 {
-			n.box.y = top + (n.subtreeH-n.box.height)/2
-			return
+// span is the vertical extent, at one tree depth, occupied by (part of) a
+// subtree, in coordinates local to that subtree's own top.
+type span struct{ min, max int }
+
+// contour maps depth -> the vertical span a subtree occupies at that
+// depth. Two subtrees can only ever collide at a depth (column) they both
+// have nodes in, since box.x is fixed per depth; a leaf's contour has a
+// single entry (its own depth), so comparing it against a neighboring
+// subtree only ever checks that shared depth, not the neighbor's deeper
+// descendants.
+type contour map[int]span
+
+// mergeInto folds add (shifted by offset) into base, widening any shared
+// depth's span and copying over any depth base doesn't have yet.
+func mergeInto(base contour, add contour, offset int) {
+	for d, s := range add {
+		shifted := span{s.min + offset, s.max + offset}
+		if existing, ok := base[d]; ok {
+			base[d] = span{min(existing.min, shifted.min), max(existing.max, shifted.max)}
+		} else {
+			base[d] = shifted
 		}
-		childTop := top
-		for _, c := range n.children {
-			place(c, childTop)
-			childTop += c.subtreeH + rowGap
-		}
-		first, last := n.children[0], n.children[len(n.children)-1]
-		mid := (first.box.y + first.box.height/2 + last.box.y + last.box.height/2) / 2
-		n.box.y = mid - n.box.height/2
 	}
-	place(root, 0)
+}
+
+// requiredOffset returns how far down `next` must be shifted so that, at
+// every depth it shares with `placed`, it clears placed's bottom edge by
+// rowGap. Depths only one of the two subtrees occupies impose no
+// constraint at all.
+func requiredOffset(placed contour, next contour) int {
+	offset := 0
+	for d, s := range next {
+		if p, ok := placed[d]; ok {
+			if need := p.max + rowGap - s.min; need > offset {
+				offset = need
+			}
+		}
+	}
+	return offset
+}
+
+// shiftSubtree moves n and all of its descendants down by dy.
+func shiftSubtree(n *node, dy int) {
+	n.box.y += dy
+	for _, c := range n.children {
+		shiftSubtree(c, dy)
+	}
+}
+
+// layoutContour assigns each node a y coordinate local to the whole tree's
+// origin. It packs a node's children as tightly as their contours allow:
+// two children are only pushed apart at depths where they both actually
+// have boxes, so a childless node never gets shoved down to make room for
+// a sibling's grandchildren sitting in an unrelated column.
+func layoutContour(n *node, depth int) contour {
+	if len(n.children) == 0 {
+		n.box.y = 0
+		return contour{depth: {0, n.box.height}}
+	}
+
+	placed := contour{}
+	for i, c := range n.children {
+		childContour := layoutContour(c, depth+1)
+		offset := 0
+		if i > 0 {
+			offset = requiredOffset(placed, childContour)
+		}
+		shiftSubtree(c, offset)
+		mergeInto(placed, childContour, offset)
+	}
+
+	first, last := n.children[0], n.children[len(n.children)-1]
+	mid := (first.box.y + first.box.height/2 + last.box.y + last.box.height/2) / 2
+	n.box.y = mid - n.box.height/2
+	mergeInto(placed, contour{depth: {0, n.box.height}}, n.box.y)
+
+	// Normalize so the subtree's own top (across n and all descendants)
+	// sits at local y=0, matching the convention leaf subtrees return.
+	top := 0
+	for _, s := range placed {
+		if s.min < top {
+			top = s.min
+		}
+	}
+	if top != 0 {
+		shiftSubtree(n, -top)
+		shifted := contour{}
+		mergeInto(shifted, placed, -top)
+		placed = shifted
+	}
+	return placed
 }
 
 // flattenTree walks the laid-out tree, collecting every box plus a
