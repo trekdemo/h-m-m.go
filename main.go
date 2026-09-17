@@ -18,6 +18,7 @@ type box struct {
 	x, y          int // top-left position in canvas coordinates
 	width, height int // rendered size, including the border
 	lines         []string
+	selLines      []string // same text, drawn with a double border for the selected node
 	color         lipgloss.Color
 }
 
@@ -26,14 +27,56 @@ type model struct {
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	boxes                []box
 	edges                []edge
+	nodes                []*node
+	selected             int // index into boxes/nodes of the selected node
 
 	dragging     bool
 	lastX, lastY int
 }
 
 func newModel() model {
-	boxes, edges := buildDemoScene()
-	return model{boxes: boxes, edges: edges}
+	boxes, edges, nodes := buildDemoScene()
+	return model{boxes: boxes, edges: edges, nodes: nodes, selected: 0}
+}
+
+// currentNode returns the currently selected node, or nil if the selection
+// is out of range.
+func (m model) currentNode() *node {
+	if m.selected < 0 || m.selected >= len(m.nodes) {
+		return nil
+	}
+	return m.nodes[m.selected]
+}
+
+// nodeAt returns the index of the box at canvas coordinates (x, y), or -1
+// if no box covers that point.
+func (m model) nodeAt(x, y int) int {
+	for i, b := range m.boxes {
+		if x >= b.x && x < b.x+b.width && y >= b.y && y < b.y+b.height {
+			return i
+		}
+	}
+	return -1
+}
+
+// ensureSelectedVisible shifts the viewport by the minimum amount needed
+// so the selected box is fully visible, so keyboard navigation never
+// selects a node the user can't see.
+func (m *model) ensureSelectedVisible() {
+	if m.selected < 0 || m.selected >= len(m.boxes) {
+		return
+	}
+	b := m.boxes[m.selected]
+	if b.x < m.offsetX {
+		m.offsetX = b.x
+	} else if b.x+b.width > m.offsetX+m.viewportW {
+		m.offsetX = b.x + b.width - m.viewportW
+	}
+	if b.y < m.offsetY {
+		m.offsetY = b.y
+	} else if b.y+b.height > m.offsetY+m.viewportH {
+		m.offsetY = b.y + b.height - m.viewportH
+	}
 }
 
 func rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh int) bool {
@@ -69,7 +112,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
+		case "left", "h":
+			if n := m.currentNode(); n != nil && n.parent != nil {
+				m.selected = n.parent.idx
+			}
+		case "right", "l":
+			if n := m.currentNode(); n != nil && len(n.children) > 0 {
+				m.selected = n.children[0].idx
+			}
+		case "up", "k":
+			if n := m.currentNode(); n != nil {
+				if i := siblingIndex(n); i > 0 {
+					m.selected = n.parent.children[i-1].idx
+				}
+			}
+		case "down", "j":
+			if n := m.currentNode(); n != nil {
+				if i := siblingIndex(n); i >= 0 && i < len(n.parent.children)-1 {
+					m.selected = n.parent.children[i+1].idx
+				}
+			}
 		}
+		m.ensureSelectedVisible()
 
 	case tea.WindowSizeMsg:
 		firstResize := m.viewportW == 0 && m.viewportH == 0
@@ -87,6 +151,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Action {
 		case tea.MouseActionPress:
 			if msg.Button == tea.MouseButtonLeft {
+				if hit := m.nodeAt(msg.X+m.offsetX, msg.Y+m.offsetY); hit >= 0 {
+					m.selected = hit
+				}
 				m.dragging = true
 				m.lastX, m.lastY = msg.X, msg.Y
 			}
@@ -160,12 +227,16 @@ func (m model) buildGrid() ([][]rune, [][]string) {
 		set(p.x, p.y, p.ch, edgeColor)
 	}
 
-	for _, b := range m.boxes {
+	for i, b := range m.boxes {
 		sx, sy := b.x-m.offsetX, b.y-m.offsetY
 		if sx+b.width <= 0 || sx >= m.viewportW || sy+b.height <= 0 || sy >= m.viewportH {
 			continue // fully off screen
 		}
-		for li, line := range b.lines {
+		lines := b.lines
+		if i == m.selected {
+			lines = b.selLines
+		}
+		for li, line := range lines {
 			col := b.x
 			for _, r := range line {
 				set(col, b.y+li, r, b.color)

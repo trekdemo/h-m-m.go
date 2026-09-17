@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestBuildDemoSceneLayout(t *testing.T) {
-	boxes, edges := buildDemoScene()
+	boxes, edges, _ := buildDemoScene()
 
 	var countNodes func(spec treeSpec) int
 	countNodes = func(spec treeSpec) int {

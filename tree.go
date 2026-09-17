@@ -68,8 +68,24 @@ var demoTree = treeSpec{
 // connector lines to its children.
 type node struct {
 	box      box
+	parent   *node
 	children []*node
 	subtreeH int // cached: vertical span this node's whole subtree occupies
+	idx      int // index into the flattened boxes/nodes slices
+}
+
+// siblingIndex returns n's position among its parent's children, or -1 if
+// n is the root (has no parent).
+func siblingIndex(n *node) int {
+	if n.parent == nil {
+		return -1
+	}
+	for i, c := range n.parent.children {
+		if c == n {
+			return i
+		}
+	}
+	return -1
 }
 
 // edge is a straight connector line from a parent box to a child box, in
@@ -95,16 +111,25 @@ func buildTree(spec treeSpec, depth int) *node {
 		}
 	}
 
+	selStyle := lipgloss.NewStyle().
+		Width(boxTextWidth).
+		Padding(0, 1).
+		Border(lipgloss.DoubleBorder())
+	selLines := strings.Split(selStyle.Render(spec.text), "\n")
+
 	n := &node{
 		box: box{
-			width:  w,
-			height: len(lines),
-			lines:  lines,
-			color:  levelColors[depth%len(levelColors)],
+			width:    w,
+			height:   len(lines),
+			lines:    lines,
+			selLines: selLines,
+			color:    levelColors[depth%len(levelColors)],
 		},
 	}
 	for _, childSpec := range spec.children {
-		n.children = append(n.children, buildTree(childSpec, depth+1))
+		child := buildTree(childSpec, depth+1)
+		child.parent = n
+		n.children = append(n.children, child)
 	}
 	return n
 }
@@ -178,9 +203,13 @@ func layoutTree(root *node) {
 
 // flattenTree walks the laid-out tree, collecting every box plus a
 // straight connector edge from each parent's right-middle edge to each
-// child's left-middle edge.
-func flattenTree(n *node, boxes *[]box, edges *[]edge) {
+// child's left-middle edge. It also assigns each node its flat index and
+// collects the nodes themselves, in the same order as boxes, so callers
+// can navigate the tree structure (parent/children/siblings) by index.
+func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
+	n.idx = len(*boxes)
 	*boxes = append(*boxes, n.box)
+	*nodes = append(*nodes, n)
 	for _, c := range n.children {
 		*edges = append(*edges, edge{
 			x1: n.box.x + n.box.width,
@@ -188,20 +217,22 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge) {
 			x2: c.box.x,
 			y2: c.box.y + c.box.height/2,
 		})
-		flattenTree(c, boxes, edges)
+		flattenTree(c, boxes, edges, nodes)
 	}
 }
 
 // buildDemoScene builds and lays out the demo tree, returning its boxes
-// and connector edges in canvas coordinates.
-func buildDemoScene() ([]box, []edge) {
+// and connector edges in canvas coordinates, plus the underlying nodes
+// (in the same order as boxes) for tree-structured navigation.
+func buildDemoScene() ([]box, []edge, []*node) {
 	root := buildTree(demoTree, 0)
 	layoutTree(root)
 
 	var boxes []box
 	var edges []edge
-	flattenTree(root, &boxes, &edges)
-	return boxes, edges
+	var nodes []*node
+	flattenTree(root, &boxes, &edges, &nodes)
+	return boxes, edges, nodes
 }
 
 // edgeCell is a single character position belonging to a drawn edge.
