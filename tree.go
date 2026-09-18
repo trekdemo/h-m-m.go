@@ -73,20 +73,6 @@ type node struct {
 	idx      int // index into the flattened boxes/nodes slices
 }
 
-// siblingIndex returns n's position among its parent's children, or -1 if
-// n is the root (has no parent).
-func siblingIndex(n *node) int {
-	if n.parent == nil {
-		return -1
-	}
-	for i, c := range n.parent.children {
-		if c == n {
-			return i
-		}
-	}
-	return -1
-}
-
 // edge is a straight connector line from a parent box to a child box, in
 // canvas coordinates.
 type edge struct {

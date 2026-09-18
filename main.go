@@ -48,6 +48,37 @@ func (m model) currentNode() *node {
 	return m.nodes[m.selected]
 }
 
+// nodeAbove/nodeBelow return the nearest node in the same tree column
+// (depth) above or below n, by box position. Once n runs out of siblings
+// in that direction, this naturally continues into cousins, and further
+// cousins, since it searches the whole column rather than just n's
+// siblings.
+func nodeAbove(nodes []*node, n *node) *node {
+	var best *node
+	for _, c := range nodes {
+		if c == n || c.box.x != n.box.x || c.box.y >= n.box.y {
+			continue
+		}
+		if best == nil || c.box.y > best.box.y {
+			best = c
+		}
+	}
+	return best
+}
+
+func nodeBelow(nodes []*node, n *node) *node {
+	var best *node
+	for _, c := range nodes {
+		if c == n || c.box.x != n.box.x || c.box.y <= n.box.y {
+			continue
+		}
+		if best == nil || c.box.y < best.box.y {
+			best = c
+		}
+	}
+	return best
+}
+
 // nodeAt returns the index of the box at canvas coordinates (x, y), or -1
 // if no box covers that point.
 func (m model) nodeAt(x, y int) int {
@@ -122,14 +153,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
-				if i := siblingIndex(n); i > 0 {
-					m.selected = n.parent.children[i-1].idx
+				if prev := nodeAbove(m.nodes, n); prev != nil {
+					m.selected = prev.idx
 				}
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
-				if i := siblingIndex(n); i >= 0 && i < len(n.parent.children)-1 {
-					m.selected = n.parent.children[i+1].idx
+				if next := nodeBelow(m.nodes, n); next != nil {
+					m.selected = next.idx
 				}
 			}
 		}
