@@ -28,6 +28,7 @@ type model struct {
 	boxes                []box
 	edges                []edge
 	nodes                []*node
+	nav                  navigator
 	selected             int // index into boxes/nodes of the selected node
 
 	dragging     bool
@@ -36,7 +37,7 @@ type model struct {
 
 func newModel() model {
 	boxes, edges, nodes := buildDemoScene()
-	return model{boxes: boxes, edges: edges, nodes: nodes, selected: 0}
+	return model{boxes: boxes, edges: edges, nodes: nodes, nav: treeNavigator{nodes: nodes}, selected: 0}
 }
 
 // currentNode returns the currently selected node, or nil if the selection
@@ -48,14 +49,42 @@ func (m model) currentNode() *node {
 	return m.nodes[m.selected]
 }
 
-// nodeAbove/nodeBelow return the nearest node in the same tree column
-// (depth) above or below n, by box position. Once n runs out of siblings
-// in that direction, this naturally continues into cousins, and further
-// cousins, since it searches the whole column rather than just n's
-// siblings.
-func nodeAbove(nodes []*node, n *node) *node {
+// navigator answers directional movement queries from a node: which node
+// should the selection move to on left/right/up/down. Different
+// implementations can back this with tree structure, box geometry, or
+// anything else, so callers (e.g. keyboard handling) don't need to change
+// when the navigation strategy does.
+type navigator interface {
+	LeftOf(n *node) *node
+	RightOf(n *node) *node
+	Above(n *node) *node
+	Below(n *node) *node
+}
+
+// treeNavigator implements navigator using tree structure for left/right
+// (parent/first child) and box position for up/down.
+type treeNavigator struct {
+	nodes []*node
+}
+
+func (tn treeNavigator) LeftOf(n *node) *node {
+	return n.parent
+}
+
+func (tn treeNavigator) RightOf(n *node) *node {
+	if len(n.children) == 0 {
+		return nil
+	}
+	return n.children[0]
+}
+
+// Above/Below return the nearest node in the same tree column (depth)
+// above or below n, by box position. Once n runs out of siblings in that
+// direction, this naturally continues into cousins, and further cousins,
+// since it searches the whole column rather than just n's siblings.
+func (tn treeNavigator) Above(n *node) *node {
 	var best *node
-	for _, c := range nodes {
+	for _, c := range tn.nodes {
 		if c == n || c.box.x != n.box.x || c.box.y >= n.box.y {
 			continue
 		}
@@ -66,9 +95,9 @@ func nodeAbove(nodes []*node, n *node) *node {
 	return best
 }
 
-func nodeBelow(nodes []*node, n *node) *node {
+func (tn treeNavigator) Below(n *node) *node {
 	var best *node
-	for _, c := range nodes {
+	for _, c := range tn.nodes {
 		if c == n || c.box.x != n.box.x || c.box.y <= n.box.y {
 			continue
 		}
@@ -144,22 +173,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
 		case "left", "h":
-			if n := m.currentNode(); n != nil && n.parent != nil {
-				m.selected = n.parent.idx
+			if n := m.currentNode(); n != nil {
+				if prev := m.nav.LeftOf(n); prev != nil {
+					m.selected = prev.idx
+				}
 			}
 		case "right", "l":
-			if n := m.currentNode(); n != nil && len(n.children) > 0 {
-				m.selected = n.children[0].idx
+			if n := m.currentNode(); n != nil {
+				if next := m.nav.RightOf(n); next != nil {
+					m.selected = next.idx
+				}
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
-				if prev := nodeAbove(m.nodes, n); prev != nil {
+				if prev := m.nav.Above(n); prev != nil {
 					m.selected = prev.idx
 				}
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
-				if next := nodeBelow(m.nodes, n); next != nil {
+				if next := m.nav.Below(n); next != nil {
 					m.selected = next.idx
 				}
 			}
