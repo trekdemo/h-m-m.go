@@ -5,12 +5,13 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/trekdemo/bubbletea-exp/navigator"
 )
 
 // box is a piece of text rendered inside a rounded border, positioned
@@ -29,7 +30,7 @@ type model struct {
 	boxes                []box
 	edges                []edge
 	nodes                []*node
-	nav                  navigator
+	nav                  navigator.Navigator
 	selected             int // index into boxes/nodes of the selected node
 
 	dragging     bool
@@ -38,7 +39,8 @@ type model struct {
 
 func newModel() model {
 	boxes, edges, nodes := buildDemoScene()
-	return model{boxes: boxes, edges: edges, nodes: nodes, nav: spatialNavigator{nodes: nodes}, selected: 0}
+	nav := navigator.Spatial{Nodes: navNodes(nodes)}
+	return model{boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0}
 }
 
 // currentNode returns the currently selected node, or nil if the selection
@@ -49,73 +51,6 @@ func (m model) currentNode() *node {
 	}
 	return m.nodes[m.selected]
 }
-
-// navigator answers directional movement queries from a node: which node
-// should the selection move to on left/right/up/down. Different
-// implementations can back this with tree structure, box geometry, or
-// anything else, so callers (e.g. keyboard handling) don't need to change
-// when the navigation strategy does.
-type navigator interface {
-	LeftOf(n *node) *node
-	RightOf(n *node) *node
-	Above(n *node) *node
-	Below(n *node) *node
-}
-
-// boxCenter returns the center point of b, as floats so distance/angle
-// math doesn't need to round on every step.
-func boxCenter(b box) (float64, float64) {
-	return float64(b.x) + float64(b.width)/2, float64(b.y) + float64(b.height)/2
-}
-
-// spatialNavigator implements navigator using box geometry: each direction
-// is a unit vector, and the nearest node within a 45-degree cone around
-// that vector wins, so "right" only ever finds boxes that actually read as
-// being to the right, not merely at a smaller x.
-type spatialNavigator struct {
-	nodes []*node
-}
-
-// nearest finds the node whose box center is closest to n's, among those
-// that lie in the cone around (dirX, dirY) from n's center. A candidate's
-// offset is decomposed into a component along the direction (primary) and
-// a component perpendicular to it (lateral); the cone is exactly the set
-// of points where the lateral offset doesn't exceed the primary one, i.e.
-// within 45 degrees of the direction. Among cone members, plain Euclidean
-// distance picks the closest.
-func (sn spatialNavigator) nearest(n *node, dirX, dirY float64) *node {
-	cx, cy := boxCenter(n.box)
-
-	var best *node
-	bestScore := math.Inf(1)
-	for _, c := range sn.nodes {
-		if c == n {
-			continue
-		}
-		px, py := boxCenter(c.box)
-		dx, dy := px-cx, py-cy
-
-		primary := dx*dirX + dy*dirY
-		if primary <= 0 {
-			continue // not in this direction at all
-		}
-		lateral := dx*dirY - dy*dirX // perpendicular component
-		if math.Abs(lateral) > primary {
-			continue // outside the 45-degree cone
-		}
-
-		if score := math.Hypot(primary, lateral); score < bestScore {
-			bestScore = score
-			best = c
-		}
-	}
-	return best
-}
-
-func (sn spatialNavigator) LeftOf(n *node) *node  { return sn.nearest(n, -1, 0) }
-func (sn spatialNavigator) RightOf(n *node) *node { return sn.nearest(n, 1, 0) }
-func (sn spatialNavigator) Above(n *node) *node   { return sn.nearest(n, 0, -1) }
-func (sn spatialNavigator) Below(n *node) *node   { return sn.nearest(n, 0, 1) }
 
 // nodeAt returns the index of the box at canvas coordinates (x, y), or -1
 // if no box covers that point.
@@ -184,25 +119,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
 				if prev := m.nav.LeftOf(n); prev != nil {
-					m.selected = prev.idx
+					m.selected = prev.(*node).idx
 				}
 			}
 		case "right", "l":
 			if n := m.currentNode(); n != nil {
 				if next := m.nav.RightOf(n); next != nil {
-					m.selected = next.idx
+					m.selected = next.(*node).idx
 				}
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
 				if prev := m.nav.Above(n); prev != nil {
-					m.selected = prev.idx
+					m.selected = prev.(*node).idx
 				}
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
 				if next := m.nav.Below(n); next != nil {
-					m.selected = next.idx
+					m.selected = next.(*node).idx
 				}
 			}
 		}

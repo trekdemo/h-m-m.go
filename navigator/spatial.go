@@ -1,0 +1,52 @@
+package navigator
+
+import "math"
+
+// Spatial implements Navigator using box geometry: each direction is a
+// unit vector, and the nearest node within a 45-degree cone around that
+// vector wins, so "right" only ever finds boxes that actually read as
+// being to the right, not merely at a smaller x.
+type Spatial struct {
+	Nodes []Node
+}
+
+// nearest finds the node whose box center is closest to n's, among those
+// that lie in the cone around (dirX, dirY) from n's center. A candidate's
+// offset is decomposed into a component along the direction (primary) and
+// a component perpendicular to it (lateral); the cone is exactly the set
+// of points where the lateral offset doesn't exceed the primary one, i.e.
+// within 45 degrees of the direction. Among cone members, plain Euclidean
+// distance picks the closest.
+func (s Spatial) nearest(n Node, dirX, dirY float64) Node {
+	cx, cy := n.Bounds().Center()
+
+	var best Node
+	bestScore := math.Inf(1)
+	for _, c := range s.Nodes {
+		if c == n {
+			continue
+		}
+		px, py := c.Bounds().Center()
+		dx, dy := px-cx, py-cy
+
+		primary := dx*dirX + dy*dirY
+		if primary <= 0 {
+			continue // not in this direction at all
+		}
+		lateral := dx*dirY - dy*dirX // perpendicular component
+		if math.Abs(lateral) > primary {
+			continue // outside the 45-degree cone
+		}
+
+		if score := math.Hypot(primary, lateral); score < bestScore {
+			bestScore = score
+			best = c
+		}
+	}
+	return best
+}
+
+func (s Spatial) LeftOf(n Node) Node  { return s.nearest(n, -1, 0) }
+func (s Spatial) RightOf(n Node) Node { return s.nearest(n, 1, 0) }
+func (s Spatial) Above(n Node) Node   { return s.nearest(n, 0, -1) }
+func (s Spatial) Below(n Node) Node   { return s.nearest(n, 0, 1) }

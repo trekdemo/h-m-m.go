@@ -2,7 +2,11 @@ package main
 
 import "strings"
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/trekdemo/bubbletea-exp/navigator"
+)
 
 const (
 	boxTextWidth = 20 // max characters per line inside a box
@@ -71,6 +75,41 @@ type node struct {
 	parent   *node
 	children []*node
 	idx      int // index into the flattened boxes/nodes slices
+}
+
+// Bounds, Parent, and Children implement navigator.Node, letting node be
+// navigated over without the navigator package knowing about tree.go's
+// layout or rendering details.
+func (n *node) Bounds() navigator.Rect {
+	return navigator.Rect{X: n.box.x, Y: n.box.y, Width: n.box.width, Height: n.box.height}
+}
+
+func (n *node) Parent() navigator.Node {
+	if n.parent == nil {
+		return nil
+	}
+	return n.parent
+}
+
+func (n *node) Children() []navigator.Node {
+	if len(n.children) == 0 {
+		return nil
+	}
+	out := make([]navigator.Node, len(n.children))
+	for i, c := range n.children {
+		out[i] = c
+	}
+	return out
+}
+
+// navNodes converts a flat node slice into navigator.Node, for building a
+// navigator over the whole tree's nodes.
+func navNodes(nodes []*node) []navigator.Node {
+	out := make([]navigator.Node, len(nodes))
+	for i, n := range nodes {
+		out[i] = n
+	}
+	return out
 }
 
 // edge is a straight connector line from a parent box to a child box, in
