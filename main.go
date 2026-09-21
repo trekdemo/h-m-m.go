@@ -102,6 +102,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setSelectedNode(target.(*node))
 				}
 			}
+		case "K":
+			if n := m.currentNode(); n != nil && moveSibling(n, -1) {
+				m.boxes, m.edges, m.nodes = relayout(m.root)
+				m.setSelectedNode(n)
+			}
+		case "J":
+			if n := m.currentNode(); n != nil && moveSibling(n, 1) {
+				m.boxes, m.edges, m.nodes = relayout(m.root)
+				m.setSelectedNode(n)
+			}
 		}
 
 	case tea.WindowSizeMsg:

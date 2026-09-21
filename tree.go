@@ -220,6 +220,29 @@ func prevSibling(n *node) *node {
 	return nil
 }
 
+// moveSibling swaps n with the sibling delta positions away in its
+// parent's children (delta -1 moves it earlier, +1 later), leaving it
+// selected in its new position. It's a no-op (returning false) if n has no
+// parent or the swap would go out of bounds.
+func moveSibling(n *node, delta int) bool {
+	if n.parent == nil {
+		return false
+	}
+	siblings := n.parent.children
+	i := 0
+	for ; i < len(siblings); i++ {
+		if siblings[i] == n {
+			break
+		}
+	}
+	j := i + delta
+	if j < 0 || j >= len(siblings) {
+		return false
+	}
+	siblings[i], siblings[j] = siblings[j], siblings[i]
+	return true
+}
+
 // removeNode detaches n (and, since they're only reachable through n, its
 // whole subtree) from its parent's children and returns the parent. It
 // returns nil without modifying the tree if n has no parent, since the
