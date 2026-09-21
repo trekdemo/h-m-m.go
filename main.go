@@ -81,7 +81,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Action {
 		case tea.MouseActionPress:
 			if msg.Button == tea.MouseButtonLeft {
-				if hit := m.nodeAt(msg.X+m.offsetX, msg.Y+m.offsetY); hit >= 0 {
+				if hit := m.nodeAt(msg.X, msg.Y); hit >= 0 {
 					m.selected = hit
 				}
 				m.dragging = true
@@ -149,9 +149,10 @@ func (m model) currentNode() *node {
 	return m.nodes[m.selected]
 }
 
-// nodeAt returns the index of the box at canvas coordinates (x, y), or -1
+// nodeAt returns the index of the box at viewport coordinates (x, y), or -1
 // if no box covers that point.
 func (m model) nodeAt(x, y int) int {
+	x, y = x+m.offsetX, y+m.offsetY
 	for i, b := range m.boxes {
 		if x >= b.x && x < b.x+b.width && y >= b.y && y < b.y+b.height {
 			return i
