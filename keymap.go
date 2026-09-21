@@ -16,19 +16,38 @@ type keyMap struct {
 	Down        key.Binding
 	MoveSibUp   key.Binding
 	MoveSibDown key.Binding
+	ToggleHelp  key.Binding
 }
 
 var normalModeKeys = keyMap{
-	Quit:        key.NewBinding(key.WithKeys("ctrl+c", "q", "esc")),
-	EnterEdit:   key.NewBinding(key.WithKeys("i", "a")),
-	AddSibling:  key.NewBinding(key.WithKeys("o", "enter")),
-	AddChild:    key.NewBinding(key.WithKeys("O", "tab")),
-	Left:        key.NewBinding(key.WithKeys("left", "h")),
-	Right:       key.NewBinding(key.WithKeys("right", "l")),
-	Up:          key.NewBinding(key.WithKeys("up", "k")),
-	Down:        key.NewBinding(key.WithKeys("down", "j")),
-	MoveSibUp:   key.NewBinding(key.WithKeys("K")),
-	MoveSibDown: key.NewBinding(key.WithKeys("J")),
+	Quit:        key.NewBinding(key.WithKeys("ctrl+c", "q", "esc"), key.WithHelp("q", "quit")),
+	EnterEdit:   key.NewBinding(key.WithKeys("i", "a"), key.WithHelp("i/a", "edit")),
+	AddSibling:  key.NewBinding(key.WithKeys("o", "enter"), key.WithHelp("o/enter", "add sibling")),
+	AddChild:    key.NewBinding(key.WithKeys("O", "tab"), key.WithHelp("O/tab", "add child")),
+	Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
+	Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
+	Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+	Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	MoveSibUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move up among siblings")),
+	MoveSibDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "move down among siblings")),
+	ToggleHelp:  key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
+}
+
+// ShortHelp returns the bindings shown in the collapsed, single-line help
+// view.
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.EnterEdit, k.AddSibling, k.AddChild, k.Quit, k.ToggleHelp}
+}
+
+// FullHelp returns the bindings shown in the expanded, multi-column help
+// view.
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.Left, k.Right},
+		{k.EnterEdit, k.AddSibling, k.AddChild},
+		{k.MoveSibUp, k.MoveSibDown},
+		{k.Quit, k.ToggleHelp},
+	}
 }
 
 // editModeKeyMap defines the keybindings used while editMode is active.
@@ -44,12 +63,28 @@ type editModeKeyMap struct {
 }
 
 var editModeKeys = editModeKeyMap{
-	Exit:      key.NewBinding(key.WithKeys("esc")),
-	Backspace: key.NewBinding(key.WithKeys("backspace")),
-	Delete:    key.NewBinding(key.WithKeys("delete")),
-	Left:      key.NewBinding(key.WithKeys("left")),
-	Right:     key.NewBinding(key.WithKeys("right")),
-	Home:      key.NewBinding(key.WithKeys("home")),
-	End:       key.NewBinding(key.WithKeys("end")),
-	Enter:     key.NewBinding(key.WithKeys("enter")),
+	Exit:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "exit edit mode")),
+	Backspace: key.NewBinding(key.WithKeys("backspace"), key.WithHelp("backspace", "delete before cursor")),
+	Delete:    key.NewBinding(key.WithKeys("delete"), key.WithHelp("delete", "delete after cursor")),
+	Left:      key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "cursor left")),
+	Right:     key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "cursor right")),
+	Home:      key.NewBinding(key.WithKeys("home"), key.WithHelp("home", "cursor to start")),
+	End:       key.NewBinding(key.WithKeys("end"), key.WithHelp("end", "cursor to end")),
+	Enter:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "newline")),
+}
+
+// ShortHelp returns the bindings shown in the collapsed, single-line help
+// view.
+func (k editModeKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Left, k.Right, k.Home, k.End, k.Backspace, k.Delete, k.Enter, k.Exit}
+}
+
+// FullHelp returns the bindings shown in the expanded, multi-column help
+// view.
+func (k editModeKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Left, k.Right, k.Home, k.End},
+		{k.Backspace, k.Delete, k.Enter},
+		{k.Exit},
+	}
 }

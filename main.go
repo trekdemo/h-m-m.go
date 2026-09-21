@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
@@ -36,7 +37,8 @@ const (
 )
 
 type model struct {
-	viewportW, viewportH int
+	windowW, windowH     int // full terminal size, as reported by the last WindowSizeMsg
+	viewportW, viewportH int // canvas area, i.e. the window minus the help view
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	root                 *node
 	boxes                []box
@@ -47,6 +49,8 @@ type model struct {
 	mode     editorMode
 	editText []rune // text buffer being edited, replaces the selected box's text on commit
 	editCurs int    // cursor position within editText, in runes
+
+	help help.Model
 
 	dragging     bool
 	lastX, lastY int
@@ -59,6 +63,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
 			m.updateEditMode(msg)
+			m.syncViewportSize()
 			break
 		}
 
@@ -113,11 +118,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.boxes, m.edges, m.nodes = relayout(m.root)
 				m.setSelectedNode(n)
 			}
+		case key.Matches(msg, normalModeKeys.ToggleHelp):
+			m.help.ShowAll = !m.help.ShowAll
 		}
+		m.syncViewportSize()
 
 	case tea.WindowSizeMsg:
-		m.viewportW = msg.Width
-		m.viewportH = msg.Height
+		m.windowW = msg.Width
+		m.windowH = msg.Height
+		m.syncViewportSize()
 		// Center on the tree on resize
 		// origin: the tree can extend arbitrarily far right and down.
 		cx, cy := boxesCentroid(m.boxes)
@@ -159,7 +168,29 @@ func (m model) View() tea.View {
 	}
 
 	v.Content = m.buildCanvas().Render()
+	if helpView := m.help.View(m.currentKeyMap()); helpView != "" {
+		v.Content += "\n" + helpView
+	}
 	return v
+}
+
+// currentKeyMap returns the keybindings active for the current mode, so the
+// help view always reflects what a key press will actually do.
+func (m model) currentKeyMap() help.KeyMap {
+	if m.mode == editMode {
+		return editModeKeys
+	}
+	return normalModeKeys
+}
+
+// syncViewportSize recomputes the canvas viewport size from the last known
+// window size and the current help view's height, so the help view never
+// overlaps the canvas: it fully occupies the bottom of the screen and the
+// canvas shrinks to fit above it.
+func (m *model) syncViewportSize() {
+	m.help.SetWidth(m.windowW)
+	m.viewportW = m.windowW
+	m.viewportH = max(0, m.windowH-lipgloss.Height(m.help.View(m.currentKeyMap())))
 }
 
 func (m *model) setSelectedNode(n *node) {
@@ -418,6 +449,7 @@ func newModel() model {
 	root, boxes, edges, nodes := buildDemoScene()
 	return model{
 		root: root, boxes: boxes, edges: edges, nodes: nodes, selected: 0,
+		help: help.New(),
 	}
 }
 
