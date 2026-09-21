@@ -68,6 +68,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "i", "a":
 			m.enterEditMode()
+		case "o", "enter":
+			if n := m.addSibling(); n != nil {
+				m.setSelectedNode(n)
+				m.enterEditMode()
+			}
+		case "O", "tab":
+			if n := m.addChild(); n != nil {
+				m.setSelectedNode(n)
+				m.enterEditMode()
+			}
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
 				if target := nav.LeftOf(n); target != nil {
@@ -177,6 +187,55 @@ func (m *model) enterEditMode() {
 	m.editCurs = len(m.editText)
 }
 
+// addSibling inserts a new, empty-text sibling right after the selected
+// node and re-lays-out the tree, returning the new node (or nil if the
+// selected node is the root, which has no siblings).
+func (m *model) addSibling() *node {
+	n := m.currentNode()
+	if n == nil {
+		return nil
+	}
+	sib := addSiblingAfter(n)
+	if sib == nil {
+		return nil
+	}
+
+	m.boxes, m.edges, m.nodes = relayout(m.root)
+	return sib
+}
+
+// addChild appends a new, empty-text child to the selected node and
+// re-lays-out the tree, returning the new node.
+func (m *model) addChild() *node {
+	n := m.currentNode()
+	if n == nil {
+		return nil
+	}
+	child := addChild(n)
+
+	m.boxes, m.edges, m.nodes = relayout(m.root)
+	return child
+}
+
+// removeIfEmpty deletes the selected node from the tree if its text is
+// empty, re-laying-out the tree and selecting its previous sibling, or its
+// parent if it has none. It leaves the tree untouched if the node still has
+// text or is the root (which has no parent to fall back to).
+func (m *model) removeIfEmpty() {
+	n := m.currentNode()
+	if n == nil || n.box.text != "" || n.parent == nil {
+		return
+	}
+	target := prevSibling(n)
+	if target == nil {
+		target = n.parent
+	}
+	removeNode(n)
+
+	m.boxes, m.edges, m.nodes = relayout(m.root)
+	m.setSelectedNode(target)
+}
+
 // applyEdit commits the edit buffer back onto the selected node's box,
 // re-rendering it (and updating its cached width/height) with the new
 // text, then re-lays-out the whole tree, since a changed box size can
@@ -204,6 +263,7 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc":
 		m.mode = normalMode
+		m.removeIfEmpty()
 	case "backspace":
 		if m.editCurs > 0 {
 			m.editText = append(m.editText[:m.editCurs-1], m.editText[m.editCurs:]...)

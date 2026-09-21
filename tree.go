@@ -120,10 +120,11 @@ type edge struct {
 	x1, y1, x2, y2 int
 }
 
-// buildTree renders each spec node into a box (wrapping text to
-// boxTextWidth, no color yet) and returns the corresponding node tree.
-// Color is assigned by depth so each tree level reads as a distinct band.
-func buildTree(spec treeSpec, depth int) *node {
+// newNode builds a single node's box (wrapping text to boxTextWidth, colored
+// by depth so each tree level reads as a distinct band) without attaching it
+// to a tree, for reuse by both buildTree and callers that insert a node
+// after the initial build (e.g. adding a sibling).
+func newNode(text string, depth int) *node {
 	color := levelColors[depth%len(levelColors)]
 
 	base := lipgloss.NewStyle().
@@ -134,23 +135,108 @@ func buildTree(spec treeSpec, depth int) *node {
 	style := base.Border(lipgloss.RoundedBorder())
 	selStyle := base.Border(lipgloss.DoubleBorder())
 
-	rendered := style.Render(spec.text)
+	rendered := style.Render(text)
 
-	n := &node{
+	return &node{
 		box: box{
 			width:    lipgloss.Width(rendered),
 			height:   lipgloss.Height(rendered),
-			text:     spec.text,
+			text:     text,
 			style:    style,
 			selStyle: selStyle,
 		},
 	}
+}
+
+// buildTree renders each spec node into a box (wrapping text to
+// boxTextWidth, no color yet) and returns the corresponding node tree.
+// Color is assigned by depth so each tree level reads as a distinct band.
+func buildTree(spec treeSpec, depth int) *node {
+	n := newNode(spec.text, depth)
 	for _, childSpec := range spec.children {
 		child := buildTree(childSpec, depth+1)
 		child.parent = n
 		n.children = append(n.children, child)
 	}
 	return n
+}
+
+// depthOf walks n's parent chain to compute its depth (root is 0), for
+// coloring a newly inserted sibling to match its column.
+func depthOf(n *node) int {
+	depth := 0
+	for p := n.parent; p != nil; p = p.parent {
+		depth++
+	}
+	return depth
+}
+
+// addSiblingAfter inserts a new, empty-text node into n's parent's children
+// right after n, and returns it. It returns nil if n has no parent (the
+// root has no siblings).
+func addSiblingAfter(n *node) *node {
+	if n.parent == nil {
+		return nil
+	}
+	sib := newNode("", depthOf(n))
+	sib.parent = n.parent
+	siblings := n.parent.children
+	i := 0
+	for ; i < len(siblings); i++ {
+		if siblings[i] == n {
+			break
+		}
+	}
+	siblings = append(siblings, nil)
+	copy(siblings[i+2:], siblings[i+1:])
+	siblings[i+1] = sib
+	n.parent.children = siblings
+	return sib
+}
+
+// addChild appends a new, empty-text node as n's last child and returns it.
+func addChild(n *node) *node {
+	child := newNode("", depthOf(n)+1)
+	child.parent = n
+	n.children = append(n.children, child)
+	return child
+}
+
+// prevSibling returns the node immediately before n in its parent's
+// children, or nil if n has no parent or is already its first child.
+func prevSibling(n *node) *node {
+	if n.parent == nil {
+		return nil
+	}
+	siblings := n.parent.children
+	for i, c := range siblings {
+		if c == n {
+			if i == 0 {
+				return nil
+			}
+			return siblings[i-1]
+		}
+	}
+	return nil
+}
+
+// removeNode detaches n (and, since they're only reachable through n, its
+// whole subtree) from its parent's children and returns the parent. It
+// returns nil without modifying the tree if n has no parent, since the
+// root can't be removed.
+func removeNode(n *node) *node {
+	if n.parent == nil {
+		return nil
+	}
+	parent := n.parent
+	siblings := parent.children
+	for i, c := range siblings {
+		if c == n {
+			parent.children = append(siblings[:i], siblings[i+1:]...)
+			break
+		}
+	}
+	return parent
 }
 
 // layoutTree runs the tree-specialized Sugiyama steps: layer assignment
