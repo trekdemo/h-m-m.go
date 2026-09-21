@@ -41,7 +41,6 @@ type model struct {
 	boxes                []box
 	edges                []edge
 	nodes                []*node
-	nav                  navigator.Navigator
 	selected             int // index into boxes/nodes of the selected node
 
 	mode     editorMode
@@ -62,6 +61,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 
+		nav := navigator.SpatialNavigator{Nodes: navNodes(m.nodes)}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
@@ -69,25 +70,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.enterEditMode()
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
-				if target := m.nav.LeftOf(n); target != nil {
+				if target := nav.LeftOf(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
 		case "right", "l":
 			if n := m.currentNode(); n != nil {
-				if target := m.nav.RightOf(n); target != nil {
+				if target := nav.RightOf(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
-				if target := m.nav.Above(n); target != nil {
+				if target := nav.Above(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
-				if target := m.nav.Below(n); target != nil {
+				if target := nav.Below(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
@@ -344,9 +345,8 @@ func boxesCentroid(boxes []box) (int, int) {
 
 func newModel() model {
 	root, boxes, edges, nodes := buildDemoScene()
-	nav := navigator.SpatialNavigator{Nodes: navNodes(nodes)}
 	return model{
-		root: root, boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
+		root: root, boxes: boxes, edges: edges, nodes: nodes, selected: 0,
 	}
 }
 
