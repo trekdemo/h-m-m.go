@@ -49,30 +49,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
-				if prev := m.nav.LeftOf(n); prev != nil {
-					m.selected = prev.(*node).idx
-				}
+				m.setSelectedNode(m.nav.LeftOf(n).(*node))
 			}
 		case "right", "l":
 			if n := m.currentNode(); n != nil {
-				if next := m.nav.RightOf(n); next != nil {
-					m.selected = next.(*node).idx
-				}
+				m.setSelectedNode(m.nav.RightOf(n).(*node))
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
-				if prev := m.nav.Above(n); prev != nil {
-					m.selected = prev.(*node).idx
-				}
+				m.setSelectedNode(m.nav.Above(n).(*node))
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
-				if next := m.nav.Below(n); next != nil {
-					m.selected = next.(*node).idx
-				}
+				m.setSelectedNode(m.nav.Below(n).(*node))
 			}
 		}
-		m.ensureSelectedVisible()
 
 	case tea.WindowSizeMsg:
 		firstResize := m.viewportW == 0 && m.viewportH == 0
@@ -126,6 +117,29 @@ func (m model) View() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m *model) setSelectedNode(n *node) {
+	if n == nil {
+		return
+	}
+
+	m.selected = n.idx
+
+	// Shift the viewport by the minimum amount needed so the selected box is
+	// fully visible, so keyboard navigation never selects a node the user can't
+	// see.
+	b := m.boxes[m.selected]
+	if b.x < m.offsetX {
+		m.offsetX = b.x
+	} else if b.x+b.width > m.offsetX+m.viewportW {
+		m.offsetX = b.x + b.width - m.viewportW
+	}
+	if b.y < m.offsetY {
+		m.offsetY = b.y
+	} else if b.y+b.height > m.offsetY+m.viewportH {
+		m.offsetY = b.y + b.height - m.viewportH
+	}
+}
+
 // currentNode returns the currently selected node, or nil if the selection
 // is out of range.
 func (m model) currentNode() *node {
@@ -144,26 +158,6 @@ func (m model) nodeAt(x, y int) int {
 		}
 	}
 	return -1
-}
-
-// ensureSelectedVisible shifts the viewport by the minimum amount needed
-// so the selected box is fully visible, so keyboard navigation never
-// selects a node the user can't see.
-func (m *model) ensureSelectedVisible() {
-	if m.selected < 0 || m.selected >= len(m.boxes) {
-		return
-	}
-	b := m.boxes[m.selected]
-	if b.x < m.offsetX {
-		m.offsetX = b.x
-	} else if b.x+b.width > m.offsetX+m.viewportW {
-		m.offsetX = b.x + b.width - m.viewportW
-	}
-	if b.y < m.offsetY {
-		m.offsetY = b.y
-	} else if b.y+b.height > m.offsetY+m.viewportH {
-		m.offsetY = b.y + b.height - m.viewportH
-	}
 }
 
 // buildGrid composites the connector edges and boxes currently visible in
