@@ -5,7 +5,6 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 	"os"
 
 	lipgloss "charm.land/lipgloss/v2"
@@ -167,28 +166,23 @@ func (m model) nodeAt(x, y int) int {
 func (m model) buildCanvas() *lipgloss.Canvas {
 	canvas := lipgloss.NewCanvas(m.viewportW, m.viewportH)
 
-	setEdge := func(x, y int, r rune, c color.Color) {
-		sx, sy := x-m.offsetX, y-m.offsetY
-		if sx < 0 || sx >= m.viewportW || sy < 0 || sy >= m.viewportH {
-			return
-		}
-		canvas.SetCell(sx, sy, &uv.Cell{Content: string(r), Width: 1, Style: uv.Style{Fg: c}})
-	}
-
-	// Draw every edge's straight segments first, then every edge's corners:
-	// sibling edges sharing a trunk column can have one's vertical stroke
-	// pass through another's corner cell, so corners must always be drawn
-	// last to avoid being overwritten by an unrelated straight segment.
-	var allCorners []edgeCell
+	// Accumulate every edge's directions per canvas cell first: when
+	// sibling edges share a trunk column, a cell can have lines coming
+	// from more than one direction (e.g. west, north, and south), which
+	// needs a junction character like ┤ rather than whichever single
+	// edge's rune happened to be drawn last.
+	dirs := map[point]direction{}
 	for _, e := range m.edges {
-		straights, corners := edgeCells(e)
-		for _, p := range straights {
-			setEdge(p.x, p.y, p.ch, edgeColor)
+		for _, c := range edgeCells(e) {
+			dirs[point{c.x, c.y}] |= c.dir
 		}
-		allCorners = append(allCorners, corners...)
 	}
-	for _, p := range allCorners {
-		setEdge(p.x, p.y, p.ch, edgeColor)
+	for p, d := range dirs {
+		sx, sy := p.x-m.offsetX, p.y-m.offsetY
+		if sx < 0 || sx >= m.viewportW || sy < 0 || sy >= m.viewportH {
+			continue
+		}
+		canvas.SetCell(sx, sy, &uv.Cell{Content: string(dirToRune(d)), Width: 1, Style: uv.Style{Fg: edgeColor}})
 	}
 
 	var layers []*lipgloss.Layer

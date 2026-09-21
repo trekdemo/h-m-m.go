@@ -314,51 +314,107 @@ func buildDemoScene() ([]box, []edge, []*node) {
 	return boxes, edges, nodes
 }
 
-// edgeCell is a single character position belonging to a drawn edge.
+// point is a canvas coordinate, used as a map key to accumulate the
+// directions of every edge that touches a given cell.
+type point struct{ x, y int }
+
+// direction is a bitmask of the cardinal directions a line passes through
+// a cell in. Multiple edges can contribute directions to the same cell
+// (e.g. siblings branching off a shared trunk column), so cells are
+// accumulated by OR-ing directions together before being converted to a
+// single box-drawing rune.
+type direction uint8
+
+const (
+	dirNorth direction = 1 << iota
+	dirSouth
+	dirEast
+	dirWest
+)
+
+// edgeCell is a single character position belonging to a drawn edge, and
+// the direction(s) the line runs through it. Accumulating these (via OR)
+// per position, across all edges, is what lets branching/merging lines
+// render as proper junction characters instead of one edge's stroke
+// silently overwriting another's.
 type edgeCell struct {
 	x, y int
-	ch   rune
+	dir  direction
 }
 
-// edgeCells computes an orthogonal (elbow) connector from e.x1,e.y1 to
-// e.x2,e.y2: out horizontally from the parent, a vertical jog at the
-// midpoint between the two columns, then horizontally into the child.
-// Corners use rounded box-drawing characters to match the box borders.
-// Siblings sharing a parent and column also share their jog's x
+// edgeCells computes the cells of an orthogonal (elbow) connector from
+// e.x1,e.y1 to e.x2,e.y2: out horizontally from the parent, a vertical
+// jog at the midpoint between the two columns, then horizontally into the
+// child. Siblings sharing a parent and column also share their jog's x
 // position, so they read as branches off one vertical trunk.
 //
-// Straight cells and corner cells are returned separately: when several
-// sibling edges share a trunk column, one sibling's vertical stroke can
-// pass directly through another's corner cell, so callers must draw every
-// edge's straight cells first and only then draw corners on top, or a
-// longer sibling's trunk stroke will stomp a shorter sibling's elbow.
-func edgeCells(e edge) (straights, corners []edgeCell) {
+// Each cell only carries the direction(s) this one edge threads through
+// it (e.g. a plain horizontal run is east+west, an elbow is two adjacent
+// directions); which box-drawing rune a cell ends up as depends on
+// merging in every edge that touches it, so that step is deferred to
+// dirToRune.
+func edgeCells(e edge) []edgeCell {
 	if e.y1 == e.y2 {
+		var cells []edgeCell
 		for x := e.x1; x <= e.x2; x++ {
-			straights = append(straights, edgeCell{x, e.y1, '─'})
+			cells = append(cells, edgeCell{x, e.y1, dirEast | dirWest})
 		}
-		return straights, nil
+		return cells
 	}
 
 	midX := (e.x1 + e.x2) / 2
+	var cells []edgeCell
 	for x := e.x1; x < midX; x++ {
-		straights = append(straights, edgeCell{x, e.y1, '─'})
+		cells = append(cells, edgeCell{x, e.y1, dirEast | dirWest})
 	}
 	for x := midX + 1; x <= e.x2; x++ {
-		straights = append(straights, edgeCell{x, e.y2, '─'})
+		cells = append(cells, edgeCell{x, e.y2, dirEast | dirWest})
 	}
 
 	dy := 1
-	corner1, corner2 := '╮', '╰' // going down: west+south, then north+east
+	corner1, corner2 := dirWest|dirSouth, dirNorth|dirEast // going down
 	if e.y2 < e.y1 {
 		dy = -1
-		corner1, corner2 = '╯', '╭' // going up: west+north, then south+east
+		corner1, corner2 = dirWest|dirNorth, dirSouth|dirEast // going up
 	}
-	corners = append(corners, edgeCell{midX, e.y1, corner1})
+	cells = append(cells, edgeCell{midX, e.y1, corner1})
 	for y := e.y1 + dy; y != e.y2; y += dy {
-		straights = append(straights, edgeCell{midX, y, '│'})
+		cells = append(cells, edgeCell{midX, y, dirNorth | dirSouth})
 	}
-	corners = append(corners, edgeCell{midX, e.y2, corner2})
+	cells = append(cells, edgeCell{midX, e.y2, corner2})
 
-	return straights, corners
+	return cells
+}
+
+// dirToRune converts an accumulated set of directions at a cell into the
+// single box-drawing character that represents all of them: a straight
+// line, a rounded elbow where exactly two adjacent directions meet, or a
+// square junction (├ ┤ ┬ ┴ ┼) where three or four lines meet.
+func dirToRune(d direction) rune {
+	switch d {
+	case dirNorth, dirSouth, dirNorth | dirSouth:
+		return '│'
+	case dirEast, dirWest, dirEast | dirWest:
+		return '─'
+	case dirNorth | dirEast:
+		return '╰'
+	case dirNorth | dirWest:
+		return '╯'
+	case dirSouth | dirEast:
+		return '╭'
+	case dirSouth | dirWest:
+		return '╮'
+	case dirNorth | dirSouth | dirEast:
+		return '├'
+	case dirNorth | dirSouth | dirWest:
+		return '┤'
+	case dirNorth | dirEast | dirWest:
+		return '┴'
+	case dirSouth | dirEast | dirWest:
+		return '┬'
+	case dirNorth | dirSouth | dirEast | dirWest:
+		return '┼'
+	default:
+		return ' '
+	}
 }
