@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image/color"
 	"os"
-	"strings"
 
 	lipgloss "charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
@@ -21,9 +20,9 @@ import (
 type box struct {
 	x, y          int // top-left position in canvas coordinates
 	width, height int // rendered size, including the border
-	lines         []string
-	selLines      []string // same text, drawn with a double border for the selected node
-	color         color.Color
+	text          string
+	style         lipgloss.Style // normal border
+	selStyle      lipgloss.Style // double border, drawn for the selected node
 }
 
 type model struct {
@@ -198,12 +197,11 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 		if sx+b.width <= 0 || sx >= m.viewportW || sy+b.height <= 0 || sy >= m.viewportH {
 			continue // fully off screen
 		}
-		lines := b.lines
+		style := b.style
 		if i == m.selected {
-			lines = b.selLines
+			style = b.selStyle
 		}
-		content := lipgloss.NewStyle().Foreground(b.color).Render(strings.Join(lines, "\n"))
-		layers = append(layers, lipgloss.NewLayer(content).X(sx).Y(sy))
+		layers = append(layers, lipgloss.NewLayer(style.Render(b.text)).X(sx).Y(sy))
 	}
 	canvas.Compose(lipgloss.NewCompositor(layers...))
 

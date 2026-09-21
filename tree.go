@@ -2,7 +2,6 @@ package main
 
 import (
 	"image/color"
-	"strings"
 )
 
 import (
@@ -125,32 +124,25 @@ type edge struct {
 // boxTextWidth, no color yet) and returns the corresponding node tree.
 // Color is assigned by depth so each tree level reads as a distinct band.
 func buildTree(spec treeSpec, depth int) *node {
-	plainStyle := lipgloss.NewStyle().
+	color := levelColors[depth%len(levelColors)]
+
+	base := lipgloss.NewStyle().
 		Width(boxTextWidth).
 		Padding(0, 1).
-		Border(lipgloss.RoundedBorder())
+		Foreground(color).
+		BorderForeground(color)
+	style := base.Border(lipgloss.RoundedBorder())
+	selStyle := base.Border(lipgloss.DoubleBorder())
 
-	lines := strings.Split(plainStyle.Render(spec.text), "\n")
-	w := 0
-	for _, l := range lines {
-		if lipgloss.Width(l) > w {
-			w = lipgloss.Width(l)
-		}
-	}
-
-	selStyle := lipgloss.NewStyle().
-		Width(boxTextWidth).
-		Padding(0, 1).
-		Border(lipgloss.DoubleBorder())
-	selLines := strings.Split(selStyle.Render(spec.text), "\n")
+	rendered := style.Render(spec.text)
 
 	n := &node{
 		box: box{
-			width:    w,
-			height:   len(lines),
-			lines:    lines,
-			selLines: selLines,
-			color:    levelColors[depth%len(levelColors)],
+			width:    lipgloss.Width(rendered),
+			height:   lipgloss.Height(rendered),
+			text:     spec.text,
+			style:    style,
+			selStyle: selStyle,
 		},
 	}
 	for _, childSpec := range spec.children {
