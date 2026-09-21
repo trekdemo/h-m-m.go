@@ -7,7 +7,7 @@ import "math"
 // vector wins, so "right" only ever finds boxes that actually read as
 // being to the right, not merely at a smaller x.
 type SpatialNavigator struct {
-	Nodes []Node
+	Nodes []NavNode
 }
 
 // nearest finds the node whose box center is closest to n's, among those
@@ -17,10 +17,10 @@ type SpatialNavigator struct {
 // of points where the lateral offset doesn't exceed the primary one, i.e.
 // within 45 degrees of the direction. Among cone members, plain Euclidean
 // distance picks the closest.
-func (s SpatialNavigator) nearest(n Node, dirX, dirY float64) Node {
+func (s SpatialNavigator) nearest(n NavNode, dirX, dirY float64) NavNode {
 	cx, cy := n.Bounds().Center()
 
-	var best Node
+	var best NavNode
 	bestScore := math.Inf(1)
 	for _, c := range s.Nodes {
 		if c == n {
@@ -46,7 +46,7 @@ func (s SpatialNavigator) nearest(n Node, dirX, dirY float64) Node {
 	return best
 }
 
-func (s SpatialNavigator) LeftOf(n Node) Node  { return s.nearest(n, -1, 0) }
-func (s SpatialNavigator) RightOf(n Node) Node { return s.nearest(n, 1, 0) }
-func (s SpatialNavigator) Above(n Node) Node   { return s.nearest(n, 0, -1) }
-func (s SpatialNavigator) Below(n Node) Node   { return s.nearest(n, 0, 1) }
+func (s SpatialNavigator) LeftOf(n NavNode) NavNode  { return s.nearest(n, -1, 0) }
+func (s SpatialNavigator) RightOf(n NavNode) NavNode { return s.nearest(n, 1, 0) }
+func (s SpatialNavigator) Above(n NavNode) NavNode   { return s.nearest(n, 0, -1) }
+func (s SpatialNavigator) Below(n NavNode) NavNode   { return s.nearest(n, 0, 1) }

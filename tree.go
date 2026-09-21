@@ -86,18 +86,18 @@ func (n *node) Bounds() navigator.Rect {
 	return navigator.Rect{X: n.box.x, Y: n.box.y, Width: n.box.width, Height: n.box.height}
 }
 
-func (n *node) Parent() navigator.Node {
+func (n *node) Parent() navigator.NavNode {
 	if n.parent == nil {
 		return nil
 	}
 	return n.parent
 }
 
-func (n *node) Children() []navigator.Node {
+func (n *node) Children() []navigator.NavNode {
 	if len(n.children) == 0 {
 		return nil
 	}
-	out := make([]navigator.Node, len(n.children))
+	out := make([]navigator.NavNode, len(n.children))
 	for i, c := range n.children {
 		out[i] = c
 	}
@@ -106,8 +106,8 @@ func (n *node) Children() []navigator.Node {
 
 // navNodes converts a flat node slice into navigator.Node, for building a
 // navigator over the whole tree's nodes.
-func navNodes(nodes []*node) []navigator.Node {
-	out := make([]navigator.Node, len(nodes))
+func navNodes(nodes []*node) []navigator.NavNode {
+	out := make([]navigator.NavNode, len(nodes))
 	for i, n := range nodes {
 		out[i] = n
 	}

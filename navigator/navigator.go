@@ -15,12 +15,12 @@ func (r Rect) Center() (float64, float64) {
 	return float64(r.X) + float64(r.Width)/2, float64(r.Y) + float64(r.Height)/2
 }
 
-// Node is anything that can be navigated between: it knows its own screen
+// NavNode is anything that can be navigated between: it knows its own screen
 // position and, for tree-based navigation, its place in a tree.
-type Node interface {
+type NavNode interface {
 	Bounds() Rect
-	Parent() Node
-	Children() []Node
+	Parent() NavNode
+	Children() []NavNode
 }
 
 // Navigator answers directional movement queries from a node: which node
@@ -29,8 +29,8 @@ type Node interface {
 // anything else, so callers (e.g. keyboard handling) don't need to change
 // when the navigation strategy does.
 type Navigator interface {
-	LeftOf(n Node) Node
-	RightOf(n Node) Node
-	Above(n Node) Node
-	Below(n Node) Node
+	LeftOf(n NavNode) NavNode
+	RightOf(n NavNode) NavNode
+	Above(n NavNode) NavNode
+	Below(n NavNode) NavNode
 }

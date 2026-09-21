@@ -3,14 +3,14 @@ package navigator
 // TreeNavigator implements Navigator using tree structure for left/right
 // (parent/first child) and box position for up/down.
 type TreeNavigator struct {
-	Nodes []Node
+	Nodes []NavNode
 }
 
-func (t TreeNavigator) LeftOf(n Node) Node {
+func (t TreeNavigator) LeftOf(n NavNode) NavNode {
 	return n.Parent()
 }
 
-func (t TreeNavigator) RightOf(n Node) Node {
+func (t TreeNavigator) RightOf(n NavNode) NavNode {
 	children := n.Children()
 	if len(children) == 0 {
 		return nil
@@ -22,9 +22,9 @@ func (t TreeNavigator) RightOf(n Node) Node {
 // above or below n, by box position. Once n runs out of siblings in that
 // direction, this naturally continues into cousins, and further cousins,
 // since it searches the whole column rather than just n's siblings.
-func (t TreeNavigator) Above(n Node) Node {
+func (t TreeNavigator) Above(n NavNode) NavNode {
 	nb := n.Bounds()
-	var best Node
+	var best NavNode
 	var bestY int
 	for _, c := range t.Nodes {
 		if c == n {
@@ -41,9 +41,9 @@ func (t TreeNavigator) Above(n Node) Node {
 	return best
 }
 
-func (t TreeNavigator) Below(n Node) Node {
+func (t TreeNavigator) Below(n NavNode) NavNode {
 	nb := n.Bounds()
-	var best Node
+	var best NavNode
 	var bestY int
 	for _, c := range t.Nodes {
 		if c == n {
