@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -63,51 +64,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		nav := navigator.SpatialNavigator{Nodes: navNodes(m.nodes)}
 
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		switch {
+		case key.Matches(msg, normalModeKeys.Quit):
 			return m, tea.Quit
-		case "i", "a":
+		case key.Matches(msg, normalModeKeys.EnterEdit):
 			m.enterEditMode()
-		case "o", "enter":
+		case key.Matches(msg, normalModeKeys.AddSibling):
 			if n := m.addSibling(); n != nil {
 				m.setSelectedNode(n)
 				m.enterEditMode()
 			}
-		case "O", "tab":
+		case key.Matches(msg, normalModeKeys.AddChild):
 			if n := m.addChild(); n != nil {
 				m.setSelectedNode(n)
 				m.enterEditMode()
 			}
-		case "left", "h":
+		case key.Matches(msg, normalModeKeys.Left):
 			if n := m.currentNode(); n != nil {
 				if target := nav.LeftOf(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
-		case "right", "l":
+		case key.Matches(msg, normalModeKeys.Right):
 			if n := m.currentNode(); n != nil {
 				if target := nav.RightOf(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
-		case "up", "k":
+		case key.Matches(msg, normalModeKeys.Up):
 			if n := m.currentNode(); n != nil {
 				if target := nav.Above(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
-		case "down", "j":
+		case key.Matches(msg, normalModeKeys.Down):
 			if n := m.currentNode(); n != nil {
 				if target := nav.Below(n); target != nil {
 					m.setSelectedNode(target.(*node))
 				}
 			}
-		case "K":
+		case key.Matches(msg, normalModeKeys.MoveSibUp):
 			if n := m.currentNode(); n != nil && moveSibling(n, -1) {
 				m.boxes, m.edges, m.nodes = relayout(m.root)
 				m.setSelectedNode(n)
 			}
-		case "J":
+		case key.Matches(msg, normalModeKeys.MoveSibDown):
 			if n := m.currentNode(); n != nil && moveSibling(n, 1) {
 				m.boxes, m.edges, m.nodes = relayout(m.root)
 				m.setSelectedNode(n)
@@ -270,34 +271,34 @@ func (m *model) applyEdit() {
 // the buffer's text (typing, backspace, delete, enter) also re-applies the
 // edit so the layout stays current.
 func (m *model) updateEditMode(msg tea.KeyPressMsg) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, editModeKeys.Exit):
 		m.mode = normalMode
 		m.removeIfEmpty()
-	case "backspace":
+	case key.Matches(msg, editModeKeys.Backspace):
 		if m.editCurs > 0 {
 			m.editText = append(m.editText[:m.editCurs-1], m.editText[m.editCurs:]...)
 			m.editCurs--
 			m.applyEdit()
 		}
-	case "delete":
+	case key.Matches(msg, editModeKeys.Delete):
 		if m.editCurs < len(m.editText) {
 			m.editText = append(m.editText[:m.editCurs], m.editText[m.editCurs+1:]...)
 			m.applyEdit()
 		}
-	case "left":
+	case key.Matches(msg, editModeKeys.Left):
 		if m.editCurs > 0 {
 			m.editCurs--
 		}
-	case "right":
+	case key.Matches(msg, editModeKeys.Right):
 		if m.editCurs < len(m.editText) {
 			m.editCurs++
 		}
-	case "home":
+	case key.Matches(msg, editModeKeys.Home):
 		m.editCurs = 0
-	case "end":
+	case key.Matches(msg, editModeKeys.End):
 		m.editCurs = len(m.editText)
-	case "enter":
+	case key.Matches(msg, editModeKeys.Enter):
 		m.insertAtCursor("\n")
 		m.applyEdit()
 	default:
