@@ -49,19 +49,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
-				m.setSelectedNode(m.nav.LeftOf(n).(*node))
+				if target := m.nav.LeftOf(n); target != nil {
+					m.setSelectedNode(target.(*node))
+				}
 			}
 		case "right", "l":
 			if n := m.currentNode(); n != nil {
-				m.setSelectedNode(m.nav.RightOf(n).(*node))
+				if target := m.nav.RightOf(n); target != nil {
+					m.setSelectedNode(target.(*node))
+				}
 			}
 		case "up", "k":
 			if n := m.currentNode(); n != nil {
-				m.setSelectedNode(m.nav.Above(n).(*node))
+				if target := m.nav.Above(n); target != nil {
+					m.setSelectedNode(target.(*node))
+				}
 			}
 		case "down", "j":
 			if n := m.currentNode(); n != nil {
-				m.setSelectedNode(m.nav.Below(n).(*node))
+				if target := m.nav.Below(n); target != nil {
+					m.setSelectedNode(target.(*node))
+				}
 			}
 		}
 
@@ -140,8 +148,6 @@ func (m *model) setSelectedNode(n *node) {
 	}
 }
 
-// currentNode returns the currently selected node, or nil if the selection
-// is out of range.
 func (m model) currentNode() *node {
 	if m.selected < 0 || m.selected >= len(m.nodes) {
 		return nil
