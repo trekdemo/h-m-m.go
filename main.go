@@ -264,15 +264,17 @@ func boxesCentroid(boxes []box) (int, int) {
 	return (minX + maxX) / 2, (minY + maxY) / 2
 }
 
-func main() {
+func newModel() model {
 	boxes, edges, nodes := buildDemoScene()
 	nav := navigator.SpatialNavigator{Nodes: navNodes(nodes)}
-	model := model{
+	return model{
 		boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
 	}
+}
 
+func main() {
 	p := tea.NewProgram(
-		model,
+		newModel(),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
