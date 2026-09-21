@@ -37,75 +37,6 @@ type model struct {
 	lastX, lastY int
 }
 
-func newModel() model {
-	boxes, edges, nodes := buildDemoScene()
-	nav := navigator.Spatial{Nodes: navNodes(nodes)}
-	return model{boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0}
-}
-
-// currentNode returns the currently selected node, or nil if the selection
-// is out of range.
-func (m model) currentNode() *node {
-	if m.selected < 0 || m.selected >= len(m.nodes) {
-		return nil
-	}
-	return m.nodes[m.selected]
-}
-
-// nodeAt returns the index of the box at canvas coordinates (x, y), or -1
-// if no box covers that point.
-func (m model) nodeAt(x, y int) int {
-	for i, b := range m.boxes {
-		if x >= b.x && x < b.x+b.width && y >= b.y && y < b.y+b.height {
-			return i
-		}
-	}
-	return -1
-}
-
-// ensureSelectedVisible shifts the viewport by the minimum amount needed
-// so the selected box is fully visible, so keyboard navigation never
-// selects a node the user can't see.
-func (m *model) ensureSelectedVisible() {
-	if m.selected < 0 || m.selected >= len(m.boxes) {
-		return
-	}
-	b := m.boxes[m.selected]
-	if b.x < m.offsetX {
-		m.offsetX = b.x
-	} else if b.x+b.width > m.offsetX+m.viewportW {
-		m.offsetX = b.x + b.width - m.viewportW
-	}
-	if b.y < m.offsetY {
-		m.offsetY = b.y
-	} else if b.y+b.height > m.offsetY+m.viewportH {
-		m.offsetY = b.y + b.height - m.viewportH
-	}
-}
-
-func rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh int) bool {
-	return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by
-}
-
-// boxesCentroid returns the center point of the bounding box that encloses
-// all boxes, so the initial viewport can be aimed at where the tree
-// actually is.
-func boxesCentroid(boxes []box) (int, int) {
-	if len(boxes) == 0 {
-		return 0, 0
-	}
-
-	minX, minY := boxes[0].x, boxes[0].y
-	maxX, maxY := boxes[0].x+boxes[0].width, boxes[0].y+boxes[0].height
-	for _, b := range boxes[1:] {
-		minX = min(minX, b.x)
-		minY = min(minY, b.y)
-		maxX = max(maxX, b.x+b.width)
-		maxY = max(maxY, b.y+b.height)
-	}
-	return (minX + maxX) / 2, (minY + maxY) / 2
-}
-
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -195,6 +126,46 @@ func (m model) View() string {
 	return strings.Join(lines, "\n")
 }
 
+// currentNode returns the currently selected node, or nil if the selection
+// is out of range.
+func (m model) currentNode() *node {
+	if m.selected < 0 || m.selected >= len(m.nodes) {
+		return nil
+	}
+	return m.nodes[m.selected]
+}
+
+// nodeAt returns the index of the box at canvas coordinates (x, y), or -1
+// if no box covers that point.
+func (m model) nodeAt(x, y int) int {
+	for i, b := range m.boxes {
+		if x >= b.x && x < b.x+b.width && y >= b.y && y < b.y+b.height {
+			return i
+		}
+	}
+	return -1
+}
+
+// ensureSelectedVisible shifts the viewport by the minimum amount needed
+// so the selected box is fully visible, so keyboard navigation never
+// selects a node the user can't see.
+func (m *model) ensureSelectedVisible() {
+	if m.selected < 0 || m.selected >= len(m.boxes) {
+		return
+	}
+	b := m.boxes[m.selected]
+	if b.x < m.offsetX {
+		m.offsetX = b.x
+	} else if b.x+b.width > m.offsetX+m.viewportW {
+		m.offsetX = b.x + b.width - m.viewportW
+	}
+	if b.y < m.offsetY {
+		m.offsetY = b.y
+	} else if b.y+b.height > m.offsetY+m.viewportH {
+		m.offsetY = b.y + b.height - m.viewportH
+	}
+}
+
 // buildGrid composites the connector edges and boxes currently visible in
 // the viewport into a plain (ANSI-free) rune grid, alongside a parallel
 // grid recording the color each cell should be drawn in ("" for none).
@@ -278,9 +249,34 @@ func renderRow(runes []rune, colors []string) string {
 	return sb.String()
 }
 
+// boxesCentroid returns the center point of the bounding box that encloses
+// all boxes, so the initial viewport can be aimed at where the tree
+// actually is.
+func boxesCentroid(boxes []box) (int, int) {
+	if len(boxes) == 0 {
+		return 0, 0
+	}
+
+	minX, minY := boxes[0].x, boxes[0].y
+	maxX, maxY := boxes[0].x+boxes[0].width, boxes[0].y+boxes[0].height
+	for _, b := range boxes[1:] {
+		minX = min(minX, b.x)
+		minY = min(minY, b.y)
+		maxX = max(maxX, b.x+b.width)
+		maxY = max(maxY, b.y+b.height)
+	}
+	return (minX + maxX) / 2, (minY + maxY) / 2
+}
+
 func main() {
+	boxes, edges, nodes := buildDemoScene()
+	nav := navigator.Spatial{Nodes: navNodes(nodes)}
+	model := model{
+		boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
+	}
+
 	p := tea.NewProgram(
-		newModel(),
+		model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
