@@ -1,9 +1,12 @@
 package main
 
-import "strings"
+import (
+	"image/color"
+	"strings"
+)
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/trekdemo/bubbletea-exp/navigator"
 )
@@ -14,7 +17,7 @@ const (
 	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
 )
 
-var levelColors = []lipgloss.Color{
+var levelColors = []color.Color{
 	lipgloss.Color("#FF6AC1"),
 	lipgloss.Color("#4EA8DE"),
 	lipgloss.Color("#FFB454"),

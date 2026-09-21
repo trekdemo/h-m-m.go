@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestModelSmoke(t *testing.T) {
@@ -12,23 +12,23 @@ func TestModelSmoke(t *testing.T) {
 	mm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = mm.(model)
 
-	mm, _ = m.Update(tea.MouseMsg{X: 10, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	mm, _ = m.Update(tea.MouseClickMsg{X: 10, Y: 10, Button: tea.MouseLeft})
 	m = mm.(model)
 
-	mm, _ = m.Update(tea.MouseMsg{X: 15, Y: 12, Action: tea.MouseActionMotion})
+	mm, _ = m.Update(tea.MouseMotionMsg{X: 15, Y: 12})
 	m = mm.(model)
 	if m.offsetX == 0 && m.offsetY == 0 {
 		t.Fatalf("expected offset to change after drag")
 	}
 
-	mm, _ = m.Update(tea.MouseMsg{X: 15, Y: 12, Action: tea.MouseActionRelease})
+	mm, _ = m.Update(tea.MouseReleaseMsg{X: 15, Y: 12})
 	m = mm.(model)
 	if m.dragging {
 		t.Fatalf("expected dragging to be false after release")
 	}
 
 	out := m.View()
-	if len(out) == 0 {
+	if len(out.Content) == 0 {
 		t.Fatalf("expected non-empty view")
 	}
 

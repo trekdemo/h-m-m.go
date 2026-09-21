@@ -5,11 +5,13 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/trekdemo/bubbletea-exp/navigator"
 )
@@ -21,7 +23,7 @@ type box struct {
 	width, height int // rendered size, including the border
 	lines         []string
 	selLines      []string // same text, drawn with a double border for the selected node
-	color         lipgloss.Color
+	color         color.Color
 }
 
 type model struct {
@@ -41,7 +43,7 @@ func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
@@ -80,44 +82,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.offsetX = cx - m.viewportW/2
 		m.offsetY = cy - m.viewportH/2
 
-	case tea.MouseMsg:
-		switch msg.Action {
-		case tea.MouseActionPress:
-			if msg.Button == tea.MouseButtonLeft {
-				if hit := m.nodeAt(msg.X, msg.Y); hit >= 0 {
-					m.selected = hit
-				}
-				m.dragging = true
-				m.lastX, m.lastY = msg.X, msg.Y
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			if hit := m.nodeAt(msg.X, msg.Y); hit >= 0 {
+				m.selected = hit
 			}
-		case tea.MouseActionRelease:
-			m.dragging = false
-		case tea.MouseActionMotion:
-			if m.dragging {
-				dx := msg.X - m.lastX
-				dy := msg.Y - m.lastY
-				m.offsetX -= dx
-				m.offsetY -= dy
-				m.lastX, m.lastY = msg.X, msg.Y
-			}
+			m.dragging = true
+			m.lastX, m.lastY = msg.X, msg.Y
+		}
+
+	case tea.MouseReleaseMsg:
+		m.dragging = false
+
+	case tea.MouseMotionMsg:
+		if m.dragging {
+			dx := msg.X - m.lastX
+			dy := msg.Y - m.lastY
+			m.offsetX -= dx
+			m.offsetY -= dy
+			m.lastX, m.lastY = msg.X, msg.Y
 		}
 	}
 
 	return m, nil
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
+	v := tea.NewView("")
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+
 	if m.viewportW == 0 || m.viewportH == 0 {
-		return ""
+		return v
 	}
 
-	grid, color := m.buildGrid()
-
-	lines := make([]string, m.viewportH)
-	for i := range grid {
-		lines[i] = renderRow(grid[i], color[i])
-	}
-	return strings.Join(lines, "\n")
+	v.Content = m.buildCanvas().Render()
+	return v
 }
 
 func (m *model) setSelectedNode(n *node) {
@@ -162,28 +162,18 @@ func (m model) nodeAt(x, y int) int {
 	return -1
 }
 
-// buildGrid composites the connector edges and boxes currently visible in
-// the viewport into a plain (ANSI-free) rune grid, alongside a parallel
-// grid recording the color each cell should be drawn in ("" for none).
-// Edges are drawn first so box borders always render cleanly on top.
-func (m model) buildGrid() ([][]rune, [][]string) {
-	grid := make([][]rune, m.viewportH)
-	color := make([][]string, m.viewportH)
-	for i := range grid {
-		grid[i] = make([]rune, m.viewportW)
-		color[i] = make([]string, m.viewportW)
-		for j := range grid[i] {
-			grid[i][j] = ' '
-		}
-	}
+// buildCanvas composites the connector edges and boxes currently visible in
+// the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
+// drawn first, cell by cell, so box borders always render cleanly on top.
+func (m model) buildCanvas() *lipgloss.Canvas {
+	canvas := lipgloss.NewCanvas(m.viewportW, m.viewportH)
 
-	set := func(x, y int, r rune, c lipgloss.Color) {
+	setEdge := func(x, y int, r rune, c color.Color) {
 		sx, sy := x-m.offsetX, y-m.offsetY
 		if sx < 0 || sx >= m.viewportW || sy < 0 || sy >= m.viewportH {
 			return
 		}
-		grid[sy][sx] = r
-		color[sy][sx] = string(c)
+		canvas.SetCell(sx, sy, &uv.Cell{Content: string(r), Width: 1, Style: uv.Style{Fg: c}})
 	}
 
 	// Draw every edge's straight segments first, then every edge's corners:
@@ -194,14 +184,15 @@ func (m model) buildGrid() ([][]rune, [][]string) {
 	for _, e := range m.edges {
 		straights, corners := edgeCells(e)
 		for _, p := range straights {
-			set(p.x, p.y, p.ch, edgeColor)
+			setEdge(p.x, p.y, p.ch, edgeColor)
 		}
 		allCorners = append(allCorners, corners...)
 	}
 	for _, p := range allCorners {
-		set(p.x, p.y, p.ch, edgeColor)
+		setEdge(p.x, p.y, p.ch, edgeColor)
 	}
 
+	var layers []*lipgloss.Layer
 	for i, b := range m.boxes {
 		sx, sy := b.x-m.offsetX, b.y-m.offsetY
 		if sx+b.width <= 0 || sx >= m.viewportW || sy+b.height <= 0 || sy >= m.viewportH {
@@ -211,38 +202,12 @@ func (m model) buildGrid() ([][]rune, [][]string) {
 		if i == m.selected {
 			lines = b.selLines
 		}
-		for li, line := range lines {
-			col := b.x
-			for _, r := range line {
-				set(col, b.y+li, r, b.color)
-				col++
-			}
-		}
+		content := lipgloss.NewStyle().Foreground(b.color).Render(strings.Join(lines, "\n"))
+		layers = append(layers, lipgloss.NewLayer(content).X(sx).Y(sy))
 	}
+	canvas.Compose(lipgloss.NewCompositor(layers...))
 
-	return grid, color
-}
-
-// renderRow turns a row of runes and their per-cell colors into a string,
-// colorizing contiguous same-color runs so ANSI escapes are never split
-// across cells.
-func renderRow(runes []rune, colors []string) string {
-	var sb strings.Builder
-	n := len(runes)
-	for i := 0; i < n; {
-		start := i
-		c := colors[i]
-		for i < n && colors[i] == c {
-			i++
-		}
-		run := string(runes[start:i])
-		if c == "" {
-			sb.WriteString(run)
-		} else {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render(run))
-		}
-	}
-	return sb.String()
+	return canvas
 }
 
 // boxesCentroid returns the center point of the bounding box that encloses
@@ -273,11 +238,7 @@ func newModel() model {
 }
 
 func main() {
-	p := tea.NewProgram(
-		newModel(),
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
+	p := tea.NewProgram(newModel())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error running program:", err)
 		os.Exit(1)
