@@ -265,7 +265,7 @@ func boxesCentroid(boxes []box) (int, int) {
 
 func main() {
 	boxes, edges, nodes := buildDemoScene()
-	nav := navigator.Spatial{Nodes: navNodes(nodes)}
+	nav := navigator.SpatialNavigator{Nodes: navNodes(nodes)}
 	model := model{
 		boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
 	}
