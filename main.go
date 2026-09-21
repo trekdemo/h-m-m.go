@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	lipgloss "charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/trekdemo/bubbletea-exp/navigator"
@@ -24,14 +24,29 @@ type box struct {
 	selStyle      lipgloss.Style // double border, drawn for the selected node
 }
 
+// editorMode is the current interaction mode, borrowed from modal editors
+// like vi: normalMode drives navigation and selection, editMode redirects
+// key presses into editing the selected box's text.
+type editorMode int
+
+const (
+	normalMode editorMode = iota
+	editMode
+)
+
 type model struct {
 	viewportW, viewportH int
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
+	root                 *node
 	boxes                []box
 	edges                []edge
 	nodes                []*node
 	nav                  navigator.Navigator
 	selected             int // index into boxes/nodes of the selected node
+
+	mode     editorMode
+	editText []rune // text buffer being edited, replaces the selected box's text on commit
+	editCurs int    // cursor position within editText, in runes
 
 	dragging     bool
 	lastX, lastY int
@@ -42,9 +57,16 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.mode == editMode {
+			m.updateEditMode(msg)
+			break
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
+		case "i", "a":
+			m.enterEditMode()
 		case "left", "h":
 			if n := m.currentNode(); n != nil {
 				if target := m.nav.LeftOf(n); target != nil {
@@ -141,6 +163,101 @@ func (m *model) setSelectedNode(n *node) {
 	}
 }
 
+// enterEditMode copies the selected node's text into the edit buffer and
+// switches to editMode, so subsequent key presses edit that buffer instead
+// of driving navigation.
+func (m *model) enterEditMode() {
+	n := m.currentNode()
+	if n == nil {
+		return
+	}
+	m.mode = editMode
+	m.editText = []rune(n.box.text)
+	m.editCurs = len(m.editText)
+}
+
+// applyEdit commits the edit buffer back onto the selected node's box,
+// re-rendering it (and updating its cached width/height) with the new
+// text, then re-lays-out the whole tree, since a changed box size can
+// require every other box to shift. Called after every buffer mutation so
+// the layout redraws live as the user types, not just once on commit.
+func (m *model) applyEdit() {
+	n := m.currentNode()
+	if n == nil {
+		return
+	}
+	n.box.text = string(m.editText)
+	rendered := n.box.style.Render(n.box.text)
+	n.box.width = lipgloss.Width(rendered)
+	n.box.height = lipgloss.Height(rendered)
+
+	m.boxes, m.edges, m.nodes = relayout(m.root)
+	m.setSelectedNode(m.nodes[m.selected])
+}
+
+// updateEditMode handles a key press while in editMode: Esc returns to
+// normalMode, navigation keys move the cursor, and any key that changes
+// the buffer's text (typing, backspace, delete, enter) also re-applies the
+// edit so the layout stays current.
+func (m *model) updateEditMode(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "esc":
+		m.mode = normalMode
+	case "backspace":
+		if m.editCurs > 0 {
+			m.editText = append(m.editText[:m.editCurs-1], m.editText[m.editCurs:]...)
+			m.editCurs--
+			m.applyEdit()
+		}
+	case "delete":
+		if m.editCurs < len(m.editText) {
+			m.editText = append(m.editText[:m.editCurs], m.editText[m.editCurs+1:]...)
+			m.applyEdit()
+		}
+	case "left":
+		if m.editCurs > 0 {
+			m.editCurs--
+		}
+	case "right":
+		if m.editCurs < len(m.editText) {
+			m.editCurs++
+		}
+	case "home":
+		m.editCurs = 0
+	case "end":
+		m.editCurs = len(m.editText)
+	case "enter":
+		m.insertAtCursor("\n")
+		m.applyEdit()
+	default:
+		if msg.Text != "" {
+			m.insertAtCursor(msg.Text)
+			m.applyEdit()
+		}
+	}
+}
+
+// insertAtCursor splices s into the edit buffer at the cursor and advances
+// the cursor past it.
+func (m *model) insertAtCursor(s string) {
+	runes := []rune(s)
+	buf := make([]rune, 0, len(m.editText)+len(runes))
+	buf = append(buf, m.editText[:m.editCurs]...)
+	buf = append(buf, runes...)
+	buf = append(buf, m.editText[m.editCurs:]...)
+	m.editText = buf
+	m.editCurs += len(runes)
+}
+
+// editingDisplayText renders the edit buffer with a cursor glyph spliced
+// in at the current cursor position, for display while editMode is active.
+func (m model) editingDisplayText() string {
+	if m.editCurs >= len(m.editText) {
+		return string(m.editText) + "▏"
+	}
+	return string(m.editText[:m.editCurs]) + "▏" + string(m.editText[m.editCurs:])
+}
+
 func (m model) currentNode() *node {
 	if m.selected < 0 || m.selected >= len(m.nodes) {
 		return nil
@@ -192,10 +309,14 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 			continue // fully off screen
 		}
 		style := b.style
+		text := b.text
 		if i == m.selected {
 			style = b.selStyle
+			if m.mode == editMode {
+				text = m.editingDisplayText()
+			}
 		}
-		layers = append(layers, lipgloss.NewLayer(style.Render(b.text)).X(sx).Y(sy))
+		layers = append(layers, lipgloss.NewLayer(style.Render(text)).X(sx).Y(sy))
 	}
 	canvas.Compose(lipgloss.NewCompositor(layers...))
 
@@ -222,10 +343,10 @@ func boxesCentroid(boxes []box) (int, int) {
 }
 
 func newModel() model {
-	boxes, edges, nodes := buildDemoScene()
+	root, boxes, edges, nodes := buildDemoScene()
 	nav := navigator.SpatialNavigator{Nodes: navNodes(nodes)}
 	return model{
-		boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
+		root: root, boxes: boxes, edges: edges, nodes: nodes, nav: nav, selected: 0,
 	}
 }
 

@@ -300,16 +300,24 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 	}
 }
 
-// buildDemoScene builds and lays out the demo tree, returning its boxes
-// and connector edges in canvas coordinates, plus the underlying nodes
-// (in the same order as boxes) for tree-structured navigation.
-func buildDemoScene() ([]box, []edge, []*node) {
-	root := buildTree(demoTree, 0)
+// buildDemoScene builds and lays out the demo tree, returning the root node
+// (so callers can re-layout it later, e.g. after an edit changes a box's
+// size), its boxes and connector edges in canvas coordinates, plus the
+// underlying nodes (in the same order as boxes) for tree-structured
+// navigation.
+func buildDemoScene() (root *node, boxes []box, edges []edge, nodes []*node) {
+	root = buildTree(demoTree, 0)
 	layoutTree(root)
+	flattenTree(root, &boxes, &edges, &nodes)
+	return root, boxes, edges, nodes
+}
 
-	var boxes []box
-	var edges []edge
-	var nodes []*node
+// relayout re-runs the tree layout on root (e.g. after a box's text edit
+// changed its width/height) and re-flattens it, returning fresh boxes,
+// edges, and nodes in the same order/idx as before, since flattening walks
+// the tree structure the same way every time.
+func relayout(root *node) (boxes []box, edges []edge, nodes []*node) {
+	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
 	return boxes, edges, nodes
 }
