@@ -37,9 +37,7 @@ type model struct {
 	lastX, lastY int
 }
 
-func (m model) Init() tea.Cmd {
-	return nil
-}
+func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -74,16 +72,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		firstResize := m.viewportW == 0 && m.viewportH == 0
 		m.viewportW = msg.Width
 		m.viewportH = msg.Height
-		// Start the view centered on the tree itself, not the canvas
+		// Center on the tree on resize
 		// origin: the tree can extend arbitrarily far right and down.
-		if firstResize {
-			cx, cy := boxesCentroid(m.boxes)
-			m.offsetX = cx - m.viewportW/2
-			m.offsetY = cy - m.viewportH/2
-		}
+		cx, cy := boxesCentroid(m.boxes)
+		m.offsetX = cx - m.viewportW/2
+		m.offsetY = cy - m.viewportH/2
 
 	case tea.MouseMsg:
 		switch msg.Action {
