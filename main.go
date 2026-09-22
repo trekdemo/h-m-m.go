@@ -73,7 +73,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
 			cmd := m.updateEditMode(msg)
-			m.syncViewportSize()
+			m.updateViewportSize()
 			return m, cmd
 		}
 
@@ -131,17 +131,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
-		m.syncViewportSize()
+		m.updateViewportSize()
 
 	case tea.WindowSizeMsg:
-		m.windowW = msg.Width
-		m.windowH = msg.Height
-		m.syncViewportSize()
-		// Center on the tree on resize
-		// origin: the tree can extend arbitrarily far right and down.
-		cx, cy := boxesCentroid(m.boxes)
-		m.offsetX = cx - m.viewportW/2
-		m.offsetY = cy - m.viewportH/2
+		m.setViewportSize(msg.Width, msg.Height)
+		m.centerOnTree()
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
@@ -196,11 +190,13 @@ func (m model) currentKeyMap() help.KeyMap {
 	return normalModeKeys
 }
 
-// syncViewportSize recomputes the canvas viewport size from the last known
-// window size and the current help view's height, so the help view never
-// overlaps the canvas: it fully occupies the bottom of the screen and the
-// canvas shrinks to fit above it.
-func (m *model) syncViewportSize() {
+func (m *model) setViewportSize(width, height int) {
+	m.windowW = width
+	m.windowH = height
+	m.updateViewportSize()
+}
+
+func (m *model) updateViewportSize() {
 	m.help.SetWidth(m.windowW)
 	reserved := lipgloss.Height(m.help.View(m.currentKeyMap()))
 	if m.statusMsg != "" {
@@ -208,6 +204,12 @@ func (m *model) syncViewportSize() {
 	}
 	m.viewportW = m.windowW
 	m.viewportH = max(0, m.windowH-reserved)
+}
+
+func (m *model) centerOnTree() {
+	cx, cy := boxesCentroid(m.boxes)
+	m.offsetX = cx - m.viewportW/2
+	m.offsetY = cy - m.viewportH/2
 }
 
 // writeToFile writes the tree back to m.savePath as OPML, recording the outcome in
@@ -264,7 +266,13 @@ func (m *model) addSibling() *node {
 	if n == nil {
 		return nil
 	}
-	sib := addSiblingAfter(n)
+
+	var sib *node
+	if n == m.root {
+		sib = addChild(n)
+	} else {
+		sib = addSiblingAfter(n)
+	}
 	if sib == nil {
 		return nil
 	}
