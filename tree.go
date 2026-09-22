@@ -2,17 +2,14 @@ package main
 
 import (
 	"image/color"
-)
 
-import (
 	lipgloss "charm.land/lipgloss/v2"
-
 	"github.com/trekdemo/bubbletea-exp/navigator"
 	"github.com/trekdemo/bubbletea-exp/storage"
 )
 
 const (
-	boxTextWidth = 20 // max characters per line inside a box
+	boxTextWidth = 40 // max characters per line inside a box
 	colGap       = 6  // horizontal gap between tree columns (room for connector lines)
 	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
 )
