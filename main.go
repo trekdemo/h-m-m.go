@@ -170,13 +170,12 @@ func (m model) View() tea.View {
 		return v
 	}
 
-	v.Content = m.buildCanvas().Render()
-	if m.statusMsg != "" {
-		v.Content += "\n" + m.statusMsg
-	}
-	if helpView := m.help.View(m.currentKeyMap()); helpView != "" {
-		v.Content += "\n" + helpView
-	}
+	v.Content = lipgloss.JoinVertical(
+		lipgloss.Top,
+		m.buildCanvas().Render(),
+		m.statusMsg,
+		m.help.View(m.currentKeyMap()),
+	)
 	return v
 }
 
@@ -198,9 +197,7 @@ func (m *model) setViewportSize(width, height int) {
 func (m *model) updateViewportSize() {
 	m.help.SetWidth(m.windowW)
 	reserved := lipgloss.Height(m.help.View(m.currentKeyMap()))
-	if m.statusMsg != "" {
-		reserved++
-	}
+	reserved++ // Reserve a line for statusMsg
 	m.viewportW = m.windowW
 	m.viewportH = max(0, m.windowH-reserved)
 }
