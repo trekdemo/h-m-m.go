@@ -14,7 +14,12 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/trekdemo/bubbletea-exp/navigator"
+	"github.com/trekdemo/bubbletea-exp/storage"
 )
+
+// defaultTreePath is loaded on startup when no file path is given on the
+// command line.
+const defaultTreePath = "testdata/demo_tree.opml"
 
 // editorMode is the current interaction mode, borrowed from modal editors
 // like vi: normalMode drives navigation and selection, editMode redirects
@@ -35,6 +40,9 @@ type model struct {
 	edges                []edge
 	nodes                []*node
 	selected             int // index into boxes/nodes of the selected node
+
+	savePath  string // OPML file that <ctrl+s> writes the tree back to
+	statusMsg string // last save result, shown below the canvas until overwritten
 
 	mode     editorMode
 	editText []rune // text buffer being edited, replaces the selected box's text on commit
@@ -110,6 +118,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
+		case key.Matches(msg, normalModeKeys.Save):
+			m.save()
 		}
 		m.syncViewportSize()
 
@@ -158,6 +168,9 @@ func (m model) View() tea.View {
 	}
 
 	v.Content = m.buildCanvas().Render()
+	if m.statusMsg != "" {
+		v.Content += "\n" + m.statusMsg
+	}
 	if helpView := m.help.View(m.currentKeyMap()); helpView != "" {
 		v.Content += "\n" + helpView
 	}
@@ -179,8 +192,22 @@ func (m model) currentKeyMap() help.KeyMap {
 // canvas shrinks to fit above it.
 func (m *model) syncViewportSize() {
 	m.help.SetWidth(m.windowW)
+	reserved := lipgloss.Height(m.help.View(m.currentKeyMap()))
+	if m.statusMsg != "" {
+		reserved++
+	}
 	m.viewportW = m.windowW
-	m.viewportH = max(0, m.windowH-lipgloss.Height(m.help.View(m.currentKeyMap())))
+	m.viewportH = max(0, m.windowH-reserved)
+}
+
+// save writes the tree back to m.savePath as OPML, recording the outcome in
+// m.statusMsg so the view can show it.
+func (m *model) save() {
+	if err := storage.SaveOPML(m.savePath, m.root); err != nil {
+		m.statusMsg = "save failed: " + err.Error()
+		return
+	}
+	m.statusMsg = "saved to " + m.savePath
 }
 
 func (m *model) setSelectedNode(n *node) {
@@ -435,16 +462,28 @@ func boxesCentroid(boxes []box) (int, int) {
 	return (minX + maxX) / 2, (minY + maxY) / 2
 }
 
-func newModel() model {
-	root, boxes, edges, nodes := buildDemoScene()
+func newModel(spec storage.Node, savePath string) model {
+	root, boxes, edges, nodes := buildScene(spec)
 	return model{
 		root: root, boxes: boxes, edges: edges, nodes: nodes, selected: 0,
-		help: help.New(),
+		help:     help.New(),
+		savePath: savePath,
 	}
 }
 
 func main() {
-	p := tea.NewProgram(newModel())
+	path := defaultTreePath
+	if len(os.Args) > 1 {
+		path = os.Args[1]
+	}
+
+	spec, err := storage.LoadOPML(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error loading opml:", err)
+		os.Exit(1)
+	}
+
+	p := tea.NewProgram(newModel(spec, path))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error running program:", err)
 		os.Exit(1)

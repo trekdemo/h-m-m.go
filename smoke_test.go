@@ -4,10 +4,16 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/trekdemo/bubbletea-exp/storage"
 )
 
 func TestModelSmoke(t *testing.T) {
-	m := newModel()
+	spec, err := storage.LoadOPML("testdata/demo_tree.opml")
+	if err != nil {
+		t.Fatalf("loading testdata/demo_tree.opml: %v", err)
+	}
+	m := newModel(spec, "testdata/demo_tree.opml")
 
 	mm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = mm.(model)

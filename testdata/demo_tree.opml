@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Bubble Tea</title>
+  </head>
+  <body>
+    <outline text="Bubble Tea">
+      <outline text="Rendering">
+        <outline text="Lip Gloss styling"/>
+        <outline text="Rounded borders"/>
+        <outline text="Word wrap at 20 chars max"/>
+      </outline>
+      <outline text="Layout">
+        <outline text="Sugiyama framework">
+          <outline text="Layer assignment"/>
+          <outline text="Crossing minimization"/>
+          <outline text="Coordinate assignment"/>
+        </outline>
+        <outline text="Tree depth becomes column"/>
+      </outline>
+      <outline text="Interaction">
+        <outline text="Click and drag"/>
+        <outline text="Pans like a map"/>
+      </outline>
+      <outline text="Go is fun"/>
+    </outline>
+  </body>
+</opml>

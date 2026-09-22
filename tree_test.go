@@ -1,14 +1,22 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/trekdemo/bubbletea-exp/storage"
+)
 
 func TestBuildDemoSceneLayout(t *testing.T) {
-	_, boxes, edges, _ := buildDemoScene()
+	demoTree, err := storage.LoadOPML("testdata/demo_tree.opml")
+	if err != nil {
+		t.Fatalf("loading testdata/demo_tree.opml: %v", err)
+	}
+	_, boxes, edges, _ := buildScene(demoTree)
 
-	var countNodes func(spec treeSpec) int
-	countNodes = func(spec treeSpec) int {
+	var countNodes func(spec storage.Node) int
+	countNodes = func(spec storage.Node) int {
 		n := 1
-		for _, c := range spec.children {
+		for _, c := range spec.Children {
 			n += countNodes(c)
 		}
 		return n

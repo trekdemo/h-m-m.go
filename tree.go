@@ -8,6 +8,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 
 	"github.com/trekdemo/bubbletea-exp/navigator"
+	"github.com/trekdemo/bubbletea-exp/storage"
 )
 
 const (
@@ -25,49 +26,6 @@ var levelColors = []color.Color{
 }
 
 var edgeColor = lipgloss.Color("#484f58")
-
-// treeSpec is the static definition of the demo hierarchy: a node's text
-// and its children, before any layout has happened.
-type treeSpec struct {
-	text     string
-	children []treeSpec
-}
-
-var demoTree = treeSpec{
-	text: "Bubble Tea",
-	children: []treeSpec{
-		{
-			text: "Rendering",
-			children: []treeSpec{
-				{text: "Lip Gloss styling"},
-				{text: "Rounded borders"},
-				{text: "Word wrap at 20 chars max"},
-			},
-		},
-		{
-			text: "Layout",
-			children: []treeSpec{
-				{
-					text: "Sugiyama framework",
-					children: []treeSpec{
-						{text: "Layer assignment"},
-						{text: "Crossing minimization"},
-						{text: "Coordinate assignment"},
-					},
-				},
-				{text: "Tree depth becomes column"},
-			},
-		},
-		{
-			text: "Interaction",
-			children: []treeSpec{
-				{text: "Click and drag"},
-				{text: "Pans like a map"},
-			},
-		},
-		{text: "Go is fun"},
-	},
-}
 
 // box is a piece of text rendered inside a rounded border, positioned
 // somewhere on the virtual canvas.
@@ -108,6 +66,21 @@ func (n *node) Children() []navigator.NavNode {
 		return nil
 	}
 	out := make([]navigator.NavNode, len(n.children))
+	for i, c := range n.children {
+		out[i] = c
+	}
+	return out
+}
+
+// OutlineText and OutlineChildren implement storage.Outline, letting a node
+// be saved to OPML directly, without converting to an intermediate type.
+func (n *node) OutlineText() string { return n.box.text }
+
+func (n *node) OutlineChildren() []storage.Outline {
+	if len(n.children) == 0 {
+		return nil
+	}
+	out := make([]storage.Outline, len(n.children))
 	for i, c := range n.children {
 		out[i] = c
 	}
@@ -161,9 +134,9 @@ func newNode(text string, depth int) *node {
 // buildTree renders each spec node into a box (wrapping text to
 // boxTextWidth, no color yet) and returns the corresponding node tree.
 // Color is assigned by depth so each tree level reads as a distinct band.
-func buildTree(spec treeSpec, depth int) *node {
-	n := newNode(spec.text, depth)
-	for _, childSpec := range spec.children {
+func buildTree(spec storage.Node, depth int) *node {
+	n := newNode(spec.Text, depth)
+	for _, childSpec := range spec.Children {
 		child := buildTree(childSpec, depth+1)
 		child.parent = n
 		n.children = append(n.children, child)
@@ -419,13 +392,13 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 	}
 }
 
-// buildDemoScene builds and lays out the demo tree, returning the root node
+// buildScene builds and lays out a tree from spec, returning the root node
 // (so callers can re-layout it later, e.g. after an edit changes a box's
 // size), its boxes and connector edges in canvas coordinates, plus the
 // underlying nodes (in the same order as boxes) for tree-structured
 // navigation.
-func buildDemoScene() (root *node, boxes []box, edges []edge, nodes []*node) {
-	root = buildTree(demoTree, 0)
+func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes []*node) {
+	root = buildTree(spec, 0)
 	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
 	return root, boxes, edges, nodes
