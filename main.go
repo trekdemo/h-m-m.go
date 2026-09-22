@@ -86,12 +86,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.enterEditMode()
 		case key.Matches(msg, normalModeKeys.AddSibling):
 			if n := m.addSibling(); n != nil {
-				m.setSelectedNode(n)
 				m.enterEditMode()
 			}
 		case key.Matches(msg, normalModeKeys.AddChild):
 			if n := m.addChild(); n != nil {
-				m.setSelectedNode(n)
 				m.enterEditMode()
 			}
 		case key.Matches(msg, normalModeKeys.Left):
@@ -124,15 +122,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, Save
 			}
 		case key.Matches(msg, normalModeKeys.MoveSibUp):
-			if n := m.currentNode(); n != nil && moveSibling(n, -1) {
-				m.boxes, m.edges, m.nodes = relayout(m.root)
-				m.setSelectedNode(n)
-			}
+			m.moveSibling(-1)
+			return m, Save
 		case key.Matches(msg, normalModeKeys.MoveSibDown):
-			if n := m.currentNode(); n != nil && moveSibling(n, 1) {
-				m.boxes, m.edges, m.nodes = relayout(m.root)
-				m.setSelectedNode(n)
-			}
+			m.moveSibling(1)
+			return m, Save
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
@@ -283,6 +277,7 @@ func (m *model) addSibling() *node {
 	}
 
 	m.boxes, m.edges, m.nodes = relayout(m.root)
+	m.setSelectedNode(sib)
 	return sib
 }
 
@@ -296,7 +291,16 @@ func (m *model) addChild() *node {
 	child := addChild(n)
 
 	m.boxes, m.edges, m.nodes = relayout(m.root)
+	m.setSelectedNode(child)
+
 	return child
+}
+
+func (m *model) moveSibling(dir int) {
+	if n := m.currentNode(); n != nil && moveSibling(n, dir) {
+		m.boxes, m.edges, m.nodes = relayout(m.root)
+		m.setSelectedNode(n)
+	}
 }
 
 func (m *model) removeCurrentNode() {
