@@ -118,6 +118,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setSelectedNode(target.(*node))
 				}
 			}
+		case key.Matches(msg, normalModeKeys.Delete):
+			if n := m.currentNode(); n != nil && n != m.root {
+				m.removeCurrentNode()
+				return m, Save
+			}
 		case key.Matches(msg, normalModeKeys.MoveSibUp):
 			if n := m.currentNode(); n != nil && moveSibling(n, -1) {
 				m.boxes, m.edges, m.nodes = relayout(m.root)
@@ -294,23 +299,32 @@ func (m *model) addChild() *node {
 	return child
 }
 
+func (m *model) removeCurrentNode() {
+	n := m.currentNode()
+	if n == nil || n.parent == nil {
+		return
+	}
+
+	target := prevSibling(n)
+	if target == nil {
+		target = n.parent
+	}
+	m.setSelectedNode(target)
+
+	removeNode(n)
+
+	m.boxes, m.edges, m.nodes = relayout(m.root)
+}
+
 // removeIfEmpty deletes the selected node from the tree if its text is
 // empty, re-laying-out the tree and selecting its previous sibling, or its
 // parent if it has none. It leaves the tree untouched if the node still has
 // text or is the root (which has no parent to fall back to).
 func (m *model) removeIfEmpty() {
 	n := m.currentNode()
-	if n == nil || n.box.text != "" || n.parent == nil {
-		return
+	if n.box.text == "" {
+		m.removeCurrentNode()
 	}
-	target := prevSibling(n)
-	if target == nil {
-		target = n.parent
-	}
-	removeNode(n)
-
-	m.boxes, m.edges, m.nodes = relayout(m.root)
-	m.setSelectedNode(target)
 }
 
 // applyEdit commits the edit buffer back onto the selected node's box,
