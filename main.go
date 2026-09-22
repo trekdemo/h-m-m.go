@@ -19,7 +19,7 @@ import (
 
 // defaultTreePath is loaded on startup when no file path is given on the
 // command line.
-const defaultTreePath = "testdata/demo_tree.opml"
+const defaultTreePath = "docs/tutorial.opml"
 
 // editorMode is the current interaction mode, borrowed from modal editors
 // like vi: normalMode drives navigation and selection, editMode redirects

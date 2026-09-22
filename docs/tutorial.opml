@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Learn This App</title>
+  </head>
+  <body>
+    <outline text="Learn This App">
+      <outline text="1. Load a tree">
+        <outline text="Run with a path: ./app mytree.opml"></outline>
+        <outline text="No path given: starts empty with one root"></outline>
+      </outline>
+      <outline text="2. Navigate">
+        <outline text="Left / h: move left"></outline>
+        <outline text="Right / l: move right"></outline>
+        <outline text="Up / k: move up"></outline>
+        <outline text="Down / j: move down"></outline>
+        <outline text="Selection follows spatial layout, not tree order"></outline>
+      </outline>
+      <outline text="3. Edit">
+        <outline text="i / a: enter edit mode on selected box"></outline>
+        <outline text="Type to replace text"></outline>
+        <outline text="Esc: commit and exit edit mode"></outline>
+      </outline>
+      <outline text="4. Build out the tree">
+        <outline text="o / enter: add sibling"></outline>
+        <outline text="O / tab: add child"></outline>
+        <outline text="Empty node + Esc: removes it"></outline>
+      </outline>
+      <outline text="5. Reorder">
+        <outline text="K: move node up among siblings"></outline>
+        <outline text="J: move node down among siblings"></outline>
+      </outline>
+      <outline text="6. Save">
+        <outline text="ctrl+s: write tree back to the OPML path"></outline>
+        <outline text="Status line confirms save or shows the error"></outline>
+      </outline>
+      <outline text="Other">
+        <outline text="?: toggle help view"></outline>
+        <outline text="q / esc / ctrl+c: quit"></outline>
+      </outline>
+    </outline>
+  </body>
+</opml>
