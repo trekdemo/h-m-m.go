@@ -41,7 +41,7 @@ type model struct {
 	nodes                []*node
 	selected             int // index into boxes/nodes of the selected node
 
-	savePath  string // OPML file that <ctrl+s> writes the tree back to
+	savePath  string // OPML file that a SaveMsg writes the tree back to
 	statusMsg string // last save result, shown below the canvas until overwritten
 
 	mode     editorMode
@@ -56,13 +56,25 @@ type model struct {
 
 func (m model) Init() tea.Cmd { return nil }
 
+// SaveMsg signals that the tree should be written back to disk. Send it with
+// [Save], following the same pattern as [tea.Quit] and [tea.QuitMsg].
+type SaveMsg struct{}
+
+// Save returns a command that produces a [SaveMsg].
+func Save() tea.Msg {
+	return SaveMsg{}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case SaveMsg:
+		m.save()
+
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
-			m.updateEditMode(msg)
+			cmd := m.updateEditMode(msg)
 			m.syncViewportSize()
-			break
+			return m, cmd
 		}
 
 		nav := navigator.SpatialNavigator{Nodes: navNodes(m.nodes)}
@@ -118,8 +130,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
-		case key.Matches(msg, normalModeKeys.Save):
-			m.save()
 		}
 		m.syncViewportSize()
 
@@ -315,14 +325,15 @@ func (m *model) applyEdit() {
 }
 
 // updateEditMode handles a key press while in editMode: Esc returns to
-// normalMode, navigation keys move the cursor, and any key that changes
-// the buffer's text (typing, backspace, delete, enter) also re-applies the
-// edit so the layout stays current.
-func (m *model) updateEditMode(msg tea.KeyPressMsg) {
+// normalMode and triggers a save, navigation keys move the cursor, and any
+// key that changes the buffer's text (typing, backspace, delete, enter)
+// also re-applies the edit so the layout stays current.
+func (m *model) updateEditMode(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, editModeKeys.Exit):
 		m.mode = normalMode
 		m.removeIfEmpty()
+		return Save
 	case key.Matches(msg, editModeKeys.Backspace):
 		if m.editCurs > 0 {
 			m.editText = append(m.editText[:m.editCurs-1], m.editText[m.editCurs:]...)
@@ -355,6 +366,7 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) {
 			m.applyEdit()
 		}
 	}
+	return nil
 }
 
 // insertAtCursor splices s into the edit buffer at the cursor and advances

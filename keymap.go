@@ -17,7 +17,6 @@ type keyMap struct {
 	MoveSibUp   key.Binding
 	MoveSibDown key.Binding
 	ToggleHelp  key.Binding
-	Save        key.Binding
 }
 
 var normalModeKeys = keyMap{
@@ -32,13 +31,12 @@ var normalModeKeys = keyMap{
 	MoveSibUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move up among siblings")),
 	MoveSibDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "move down among siblings")),
 	ToggleHelp:  key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
-	Save:        key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "save")),
 }
 
 // ShortHelp returns the bindings shown in the collapsed, single-line help
 // view.
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.EnterEdit, k.AddSibling, k.AddChild, k.Save, k.Quit, k.ToggleHelp}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.EnterEdit, k.AddSibling, k.AddChild, k.Quit, k.ToggleHelp}
 }
 
 // FullHelp returns the bindings shown in the expanded, multi-column help
@@ -48,7 +46,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.EnterEdit, k.AddSibling, k.AddChild},
 		{k.MoveSibUp, k.MoveSibDown},
-		{k.Save, k.Quit, k.ToggleHelp},
+		{k.Quit, k.ToggleHelp},
 	}
 }
 
