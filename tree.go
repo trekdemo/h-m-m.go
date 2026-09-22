@@ -69,6 +69,16 @@ var demoTree = treeSpec{
 	},
 }
 
+// box is a piece of text rendered inside a rounded border, positioned
+// somewhere on the virtual canvas.
+type box struct {
+	x, y          int // top-left position in canvas coordinates
+	width, height int // rendered size, including the border
+	text          string
+	style         lipgloss.Style // normal border
+	selStyle      lipgloss.Style // double border, drawn for the selected node
+}
+
 // node is a treeSpec after box rendering and layout: it carries its
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
