@@ -477,13 +477,19 @@ func main() {
 		path = os.Args[1]
 	}
 
-	spec, err := storage.LoadOPML(path)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error loading opml:", err)
-		os.Exit(1)
+	var nodeTree storage.Node
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+		nodeTree = storage.Node{}
+	} else {
+		var err error
+		nodeTree, err = storage.LoadOPML(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error loading opml:", err)
+			os.Exit(1)
+		}
 	}
 
-	p := tea.NewProgram(newModel(spec, path))
+	p := tea.NewProgram(newModel(nodeTree, path))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error running program:", err)
 		os.Exit(1)
