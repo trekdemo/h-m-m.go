@@ -68,7 +68,7 @@ func Save() tea.Msg {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case SaveMsg:
-		m.save()
+		m.writeToFile()
 
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
@@ -210,9 +210,9 @@ func (m *model) syncViewportSize() {
 	m.viewportH = max(0, m.windowH-reserved)
 }
 
-// save writes the tree back to m.savePath as OPML, recording the outcome in
+// writeToFile writes the tree back to m.savePath as OPML, recording the outcome in
 // m.statusMsg so the view can show it.
-func (m *model) save() {
+func (m *model) writeToFile() {
 	if err := storage.SaveOPML(m.savePath, m.root); err != nil {
 		m.statusMsg = "save failed: " + err.Error()
 		return
