@@ -1,4 +1,4 @@
-module github.com/trekdemo/bubbletea-exp
+module hmm
 
 go 1.25.0
 

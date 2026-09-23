@@ -4,8 +4,8 @@ import (
 	"image/color"
 
 	lipgloss "charm.land/lipgloss/v2"
-	"github.com/trekdemo/bubbletea-exp/navigator"
-	"github.com/trekdemo/bubbletea-exp/storage"
+	"hmm/navigator"
+	"hmm/storage"
 )
 
 const (

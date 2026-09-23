@@ -13,8 +13,8 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/trekdemo/bubbletea-exp/navigator"
-	"github.com/trekdemo/bubbletea-exp/storage"
+	"hmm/navigator"
+	"hmm/storage"
 )
 
 // defaultTreePath is loaded on startup when no file path is given on the

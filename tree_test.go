@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/trekdemo/bubbletea-exp/storage"
+	"hmm/storage"
 )
 
 func TestBuildDemoSceneLayout(t *testing.T) {
