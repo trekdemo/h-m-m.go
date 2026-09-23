@@ -1,6 +1,8 @@
 package main
 
 import (
+	"image/color"
+
 	"hmm/navigator"
 	"hmm/storage"
 
@@ -27,6 +29,7 @@ type box struct {
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
 type node struct {
+	color    color.Color
 	box      box
 	parent   *node
 	children []*node
@@ -89,17 +92,18 @@ type edge struct {
 	x1, y1, x2, y2 int
 }
 
-// newNode builds a single node's box (wrapping text to boxTextWidth, colored
-// by depth so each tree level reads as a distinct band) without attaching it
-// to a tree, for reuse by both buildTree and callers that insert a node
-// after the initial build (e.g. adding a sibling).
-func newNode(text string, depth int) *node {
-	style := nodeStyle(levelColor(depth))
+// newNode builds a single node's box (wrapping text to boxTextWidth, drawn
+// in the given color) without attaching it to a tree, for reuse by both
+// buildTree and callers that insert a node after the initial build (e.g.
+// adding a sibling).
+func newNode(text string, c color.Color) *node {
+	style := nodeStyle(c)
 	selStyle := selectedStyle(style)
 
 	rendered := style.Render(text)
 
 	return &node{
+		color: c,
 		box: box{
 			width:    lipgloss.Width(rendered),
 			height:   lipgloss.Height(rendered),
@@ -110,27 +114,29 @@ func newNode(text string, depth int) *node {
 	}
 }
 
-// buildTree renders each spec node into a box (wrapping text to
-// boxTextWidth, no color yet) and returns the corresponding node tree.
-// Color is assigned by depth so each tree level reads as a distinct band.
-func buildTree(spec storage.Node, depth int) *node {
-	n := newNode(spec.Text, depth)
-	for _, childSpec := range spec.Children {
-		child := buildTree(childSpec, depth+1)
-		child.parent = n
-		n.children = append(n.children, child)
+// childColor picks the color for a new child of parent: each child of the
+// root gets the next palette color, deeper nodes inherit their parent's.
+func childColor(parent *node) color.Color {
+	if parent.parent == nil {
+		return levelColor(len(parent.children))
 	}
-	return n
+	return parent.color
 }
 
-// depthOf walks n's parent chain to compute its depth (root is 0), for
-// coloring a newly inserted sibling to match its column.
-func depthOf(n *node) int {
-	depth := 0
-	for p := n.parent; p != nil; p = p.parent {
-		depth++
+// buildTree renders each spec node into a box (wrapping text to
+// boxTextWidth) and returns the corresponding node tree. The root uses
+// rootColor; see childColor for how the rest are colored.
+func buildTree(spec storage.Node) *node {
+	return buildSubtree(spec, newNode(spec.Text, rootColor))
+}
+
+func buildSubtree(spec storage.Node, n *node) *node {
+	for _, childSpec := range spec.Children {
+		child := newNode(childSpec.Text, childColor(n))
+		child.parent = n // set before recursing: childColor reads the parent chain
+		n.children = append(n.children, buildSubtree(childSpec, child))
 	}
-	return depth
+	return n
 }
 
 // addSiblingAfter inserts a new, empty-text node into n's parent's children
@@ -140,7 +146,7 @@ func addSiblingAfter(n *node) *node {
 	if n.parent == nil {
 		return nil
 	}
-	sib := newNode("", depthOf(n))
+	sib := newNode("", childColor(n.parent))
 	sib.parent = n.parent
 	siblings := n.parent.children
 	i := 0
@@ -158,7 +164,7 @@ func addSiblingAfter(n *node) *node {
 
 // addChild appends a new, empty-text node as n's last child and returns it.
 func addChild(n *node) *node {
-	child := newNode("", depthOf(n)+1)
+	child := newNode("", childColor(n))
 	child.parent = n
 	n.children = append(n.children, child)
 	return child
@@ -377,7 +383,7 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 // underlying nodes (in the same order as boxes) for tree-structured
 // navigation.
 func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes []*node) {
-	root = buildTree(spec, 0)
+	root = buildTree(spec)
 	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
 	return root, boxes, edges, nodes

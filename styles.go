@@ -14,6 +14,8 @@ var levelColors = []color.Color{
 	lipgloss.Color("#B399FF"),
 }
 
+var rootColor = lipgloss.Color("#E6EDF3")
+
 var edgeColor = lipgloss.Color("#484f58")
 
 // levelColor returns the color for a tree depth, so each level reads as a
