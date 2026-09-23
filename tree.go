@@ -1,28 +1,17 @@
 package main
 
 import (
-	"image/color"
-
-	lipgloss "charm.land/lipgloss/v2"
 	"hmm/navigator"
 	"hmm/storage"
+
+	lipgloss "charm.land/lipgloss/v2"
 )
 
 const (
-	boxTextWidth = 40 // max characters per line inside a box
+	boxTextWidth = 30 // max characters per line inside a box
 	colGap       = 6  // horizontal gap between tree columns (room for connector lines)
 	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
 )
-
-var levelColors = []color.Color{
-	lipgloss.Color("#FF6AC1"),
-	lipgloss.Color("#4EA8DE"),
-	lipgloss.Color("#FFB454"),
-	lipgloss.Color("#7EE787"),
-	lipgloss.Color("#B399FF"),
-}
-
-var edgeColor = lipgloss.Color("#484f58")
 
 // box is a piece of text rendered inside a rounded border, positioned
 // somewhere on the virtual canvas.
@@ -105,15 +94,8 @@ type edge struct {
 // to a tree, for reuse by both buildTree and callers that insert a node
 // after the initial build (e.g. adding a sibling).
 func newNode(text string, depth int) *node {
-	color := levelColors[depth%len(levelColors)]
-
-	base := lipgloss.NewStyle().
-		Width(boxTextWidth).
-		Padding(0, 1).
-		Foreground(color).
-		BorderForeground(color)
-	style := base.Border(lipgloss.RoundedBorder())
-	selStyle := base.Border(lipgloss.DoubleBorder())
+	style := nodeStyle(levelColor(depth))
+	selStyle := selectedStyle(style)
 
 	rendered := style.Render(text)
 
