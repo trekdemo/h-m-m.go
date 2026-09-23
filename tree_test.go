@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"testing"
 
 	"hmm/navigator"
@@ -93,7 +94,7 @@ func TestLayoutIsBidirectional(t *testing.T) {
 		}
 
 		first, last := firstLevel[0], firstLevel[len(firstLevel)-1]
-		mid := (first.box.y + first.box.height/2 + last.box.y + last.box.height/2) / 2
+		mid := (first.box.y + last.box.y + last.box.height) / 2
 		if d := mid - rootCenter; d < -1 || d > 1 {
 			t.Errorf("side (right=%v) first level centered at y=%d, root at y=%d", wantRight, mid, rootCenter)
 		}
@@ -200,5 +201,108 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 	}
 	if got := nav.LeftOf(left.children[0]); got != nil {
 		t.Errorf("left of a left-side leaf = %v, want nil", got)
+	}
+}
+
+// sizedNode builds a node with an explicit box size, bypassing text
+// rendering, so layout tests can use sizes newNode never produces.
+func sizedNode(w, h int, children ...*node) *node {
+	n := &node{box: box{width: w, height: h}, children: children}
+	for _, c := range children {
+		c.parent = n
+	}
+	return n
+}
+
+func TestTidyLayoutRandomTrees(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	var grow func(depth int) *node
+	grow = func(depth int) *node {
+		var children []*node
+		if depth < 5 {
+			for range rng.Intn(5) {
+				children = append(children, grow(depth+1))
+			}
+		}
+		return sizedNode(3+rng.Intn(30), 1+rng.Intn(6), children...)
+	}
+
+	for iter := range 200 {
+		root := grow(0)
+		layoutTree(root)
+
+		var all []*node
+		eachDescendant(root, func(n *node) { all = append(all, n) })
+
+		for i, a := range all {
+			for _, b := range all[i+1:] {
+				// Boxes sharing any column must also keep rowGap between them.
+				if a.box.x < b.box.x+b.box.width && b.box.x < a.box.x+a.box.width &&
+					a.box.y < b.box.y+b.box.height+rowGap && b.box.y < a.box.y+a.box.height+rowGap {
+					t.Fatalf("iter %d: boxes too close: %+v vs %+v", iter, a.box, b.box)
+				}
+			}
+		}
+
+		eachDescendant(root, func(n *node) {
+			if n == root || len(n.children) == 0 {
+				return
+			}
+			for _, c := range n.children {
+				right := c.box.x == n.box.x+n.box.width+colGap
+				left := c.box.x+c.box.width+colGap == n.box.x
+				if !right && !left {
+					t.Fatalf("iter %d: child %+v not colGap past its parent %+v", iter, c.box, n.box)
+				}
+			}
+			first, last := n.children[0], n.children[len(n.children)-1]
+			span := first.box.y + last.box.y + last.box.height
+			if d := 2*n.box.y + n.box.height - span; d < -2 || d > 2 {
+				t.Fatalf("iter %d: parent %+v not centered on children %+v..%+v", iter, n.box, first.box, last.box)
+			}
+		})
+	}
+}
+
+func TestTidyLayoutIsNonLayered(t *testing.T) {
+	wide := sizedNode(30, 1, sizedNode(5, 1))
+	narrow := sizedNode(5, 1, sizedNode(5, 1))
+	root := sizedNode(5, 1, sizedNode(5, 1, wide, narrow))
+	layoutTree(root)
+
+	gw, gn := wide.children[0], narrow.children[0]
+	if gw.box.x == gn.box.x {
+		t.Fatalf("grandchildren share a column (x=%d); each should sit just past its own parent", gw.box.x)
+	}
+	if gn.box.x != narrow.box.x+narrow.box.width+colGap {
+		t.Fatalf("narrow parent's child at x=%d, want %d", gn.box.x, narrow.box.x+narrow.box.width+colGap)
+	}
+}
+
+func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
+	tall := func() *node {
+		var kids []*node
+		for range 8 {
+			kids = append(kids, sizedNode(5, 3))
+		}
+		return sizedNode(5, 3, kids...)
+	}
+	mid := []*node{sizedNode(5, 3), sizedNode(5, 3), sizedNode(5, 3)}
+	parent := sizedNode(5, 3, append(append([]*node{tall()}, mid...), tall())...)
+	root := sizedNode(5, 3, parent)
+	layoutTree(root)
+
+	var gaps []int
+	for i := 1; i < len(parent.children); i++ {
+		prev, cur := parent.children[i-1], parent.children[i]
+		gaps = append(gaps, cur.box.y-(prev.box.y+prev.box.height))
+	}
+	for _, g := range gaps {
+		if g-gaps[0] < -1 || g-gaps[0] > 1 {
+			t.Fatalf("gaps between siblings = %v, want them (nearly) equal", gaps)
+		}
+	}
+	if gaps[0] <= rowGap {
+		t.Fatalf("gaps = %v: the small siblings were packed, not spread", gaps)
 	}
 }

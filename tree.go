@@ -11,7 +11,7 @@ import (
 
 const (
 	boxTextWidth = 30 // max characters per line inside a box
-	colGap       = 6  // horizontal gap between tree columns (room for connector lines)
+	colGap       = 6  // horizontal gap between a parent and its children (room for connector lines)
 	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
 )
 
@@ -242,12 +242,10 @@ func removeNode(n *node) *node {
 // layoutTree lays the tree out bidirectionally, like Mermaid's tidy-tree
 // mindmap layout: the root sits at the origin and its children are split
 // into two sides by alternating index (1st, 3rd, 5th... grow to the right,
-// 2nd, 4th, 6th... grow to the left). Each side then runs the
-// tree-specialized Sugiyama steps on its own: layer assignment (depth ->
-// column/x, mirrored for the left side), then a coordinate-assignment pass
-// (subtree-band packing -> y) that centers each parent over the vertical
-// span of its children without ever letting two boxes overlap. The root
-// stays at (0, 0) across relayouts, so editing never makes it jump.
+// 2nd, 4th, 6th... grow to the left). Each side is then laid out as its own
+// non-layered tidy tree (see tidy.go), rotated so depth runs horizontally.
+// The root stays at (0, 0) across relayouts, so editing never makes it
+// jump.
 func layoutTree(root *node) {
 	root.box.x, root.box.y = 0, 0
 	right, left := splitSides(root.children)
@@ -278,163 +276,63 @@ func splitSides(children []*node) (right, left []*node) {
 }
 
 // layoutSide positions children (a subset of root's children) and their
-// descendants on one side of root. Columns are sized per side, since the
-// two halves never share a column. On the right, a column's boxes are
-// left-aligned against the edge facing the root; on the left, they're
-// right-aligned, mirroring it, so siblings' connectors meet at a shared
-// trunk on either side.
+// descendants on one side of root. They're laid out as a tidy tree under a
+// virtual root the size of the real one, rotated so the tidy tree's depth
+// axis runs away from the root horizontally and its breadth axis runs
+// down. Each child sits colGap past its own parent's far edge, not in a
+// column shared with every other node at its depth, and sibling subtrees
+// keep at least rowGap between them wherever they'd otherwise meet. The
+// left side is the right side mirrored around the root, so a parent's
+// children always line up on the edge facing it and their connectors meet
+// at a shared trunk.
 func layoutSide(root *node, children []*node, dir side) {
 	if len(children) == 0 {
 		return
 	}
 
-	colWidth := map[int]int{}
-	var measureColumns func(n *node, depth int)
-	measureColumns = func(n *node, depth int) {
-		if n.box.width > colWidth[depth] {
-			colWidth[depth] = n.box.width
+	var convert func(n *node, y float64) *tidyTree
+	convert = func(n *node, y float64) *tidyTree {
+		t := &tidyTree{
+			n: n,
+			y: y,
+			w: float64(n.box.height + rowGap),
+			h: float64(n.box.width + colGap),
 		}
 		for _, c := range n.children {
-			measureColumns(c, depth+1)
+			t.c = append(t.c, convert(c, y+t.h))
 		}
+		return t
+	}
+	virtual := &tidyTree{
+		w: float64(root.box.height + rowGap),
+		h: float64(root.box.width + colGap),
 	}
 	for _, c := range children {
-		measureColumns(c, 1)
+		virtual.c = append(virtual.c, convert(c, virtual.h))
 	}
 
-	// near is each column's distance from the root's facing edge to the
-	// column's own edge facing the root.
-	near := map[int]int{1: colGap}
-	for d := 2; d <= len(colWidth); d++ {
-		near[d] = near[d-1] + colWidth[d-1] + colGap
-	}
+	tidyLayout(virtual)
 
-	var assignX func(n *node, depth int)
-	assignX = func(n *node, depth int) {
+	// Shift breadth so the virtual root lands exactly on the real one,
+	// which centers the root on this side's first level.
+	shift := float64(root.box.y) - virtual.x
+	var place func(t *tidyTree)
+	place = func(t *tidyTree) {
+		n := t.n
+		n.box.y = floorInt(t.x + shift)
+		depth := int(t.y)
 		if dir == sideRight {
-			n.box.x = root.box.x + root.box.width + near[depth]
+			n.box.x = root.box.x + depth
 		} else {
-			n.box.x = root.box.x - near[depth] - n.box.width
+			n.box.x = root.box.x + root.box.width - depth - n.box.width
 		}
-		for _, c := range n.children {
-			assignX(c, depth+1)
-		}
-	}
-	for _, c := range children {
-		assignX(c, 1)
-	}
-
-	packSiblings(children, 1)
-
-	// Center this side's first-level nodes on the root.
-	first, last := children[0], children[len(children)-1]
-	mid := (first.box.y + first.box.height/2 + last.box.y + last.box.height/2) / 2
-	dy := root.box.y + root.box.height/2 - mid
-	for _, c := range children {
-		shiftSubtree(c, dy)
-	}
-}
-
-// span is the vertical extent, at one tree depth, occupied by (part of) a
-// subtree, in coordinates local to that subtree's own top.
-type span struct{ min, max int }
-
-// contour maps depth -> the vertical span a subtree occupies at that
-// depth. Two subtrees can only ever collide at a depth (column) they both
-// have nodes in, since box.x is fixed per depth; a leaf's contour has a
-// single entry (its own depth), so comparing it against a neighboring
-// subtree only ever checks that shared depth, not the neighbor's deeper
-// descendants.
-type contour map[int]span
-
-// mergeInto folds add (shifted by offset) into base, widening any shared
-// depth's span and copying over any depth base doesn't have yet.
-func mergeInto(base contour, add contour, offset int) {
-	for d, s := range add {
-		shifted := span{s.min + offset, s.max + offset}
-		if existing, ok := base[d]; ok {
-			base[d] = span{min(existing.min, shifted.min), max(existing.max, shifted.max)}
-		} else {
-			base[d] = shifted
+		for _, c := range t.c {
+			place(c)
 		}
 	}
-}
-
-// requiredOffset returns how far down `next` must be shifted so that, at
-// every depth it shares with `placed`, it clears placed's bottom edge by
-// rowGap. Depths only one of the two subtrees occupies impose no
-// constraint at all.
-func requiredOffset(placed contour, next contour) int {
-	offset := 0
-	for d, s := range next {
-		if p, ok := placed[d]; ok {
-			if need := p.max + rowGap - s.min; need > offset {
-				offset = need
-			}
-		}
+	for _, c := range virtual.c {
+		place(c)
 	}
-	return offset
-}
-
-// shiftSubtree moves n and all of its descendants down by dy.
-func shiftSubtree(n *node, dy int) {
-	n.box.y += dy
-	for _, c := range n.children {
-		shiftSubtree(c, dy)
-	}
-}
-
-// packSiblings lays out each of children (all at depth) as its own
-// subtree, then stacks them top to bottom as tightly as their contours
-// allow, returning the contour of the whole stack. Two siblings are only
-// pushed apart at depths where they both actually have boxes, so a
-// childless node never gets shoved down to make room for a sibling's
-// grandchildren sitting in an unrelated column.
-func packSiblings(children []*node, depth int) contour {
-	placed := contour{}
-	for i, c := range children {
-		childContour := layoutContour(c, depth)
-		offset := 0
-		if i > 0 {
-			offset = requiredOffset(placed, childContour)
-		}
-		shiftSubtree(c, offset)
-		mergeInto(placed, childContour, offset)
-	}
-	return placed
-}
-
-// layoutContour assigns each node a y coordinate local to the whole tree's
-// origin, packing a node's children with packSiblings and centering the
-// node on them.
-func layoutContour(n *node, depth int) contour {
-	if len(n.children) == 0 {
-		n.box.y = 0
-		return contour{depth: {0, n.box.height}}
-	}
-
-	placed := packSiblings(n.children, depth+1)
-
-	first, last := n.children[0], n.children[len(n.children)-1]
-	mid := (first.box.y + first.box.height/2 + last.box.y + last.box.height/2) / 2
-	n.box.y = mid - n.box.height/2
-	mergeInto(placed, contour{depth: {0, n.box.height}}, n.box.y)
-
-	// Normalize so the subtree's own top (across n and all descendants)
-	// sits at local y=0, matching the convention leaf subtrees return.
-	top := 0
-	for _, s := range placed {
-		if s.min < top {
-			top = s.min
-		}
-	}
-	if top != 0 {
-		shiftSubtree(n, -top)
-		shifted := contour{}
-		mergeInto(shifted, placed, -top)
-		placed = shifted
-	}
-	return placed
 }
 
 // flattenTree walks the laid-out tree, collecting every box plus a
