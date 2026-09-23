@@ -65,6 +65,8 @@ func (n *node) Children() []navigator.NavNode {
 // be saved to OPML directly, without converting to an intermediate type.
 func (n *node) OutlineText() string { return n.box.text }
 
+func (n *node) OutlineColor() string { return hexColor(n.color) }
+
 func (n *node) OutlineChildren() []storage.Outline {
 	if len(n.children) == 0 {
 		return nil
@@ -125,14 +127,15 @@ func childColor(parent *node) color.Color {
 
 // buildTree renders each spec node into a box (wrapping text to
 // boxTextWidth) and returns the corresponding node tree. The root uses
-// rootColor; see childColor for how the rest are colored.
+// rootColor and colors from the spec take precedence; see childColor for how
+// nodes without one are colored.
 func buildTree(spec storage.Node) *node {
-	return buildSubtree(spec, newNode(spec.Text, rootColor))
+	return buildSubtree(spec, newNode(spec.Text, colorOr(spec.Color, rootColor)))
 }
 
 func buildSubtree(spec storage.Node, n *node) *node {
 	for _, childSpec := range spec.Children {
-		child := newNode(childSpec.Text, childColor(n))
+		child := newNode(childSpec.Text, colorOr(childSpec.Color, childColor(n)))
 		child.parent = n // set before recursing: childColor reads the parent chain
 		n.children = append(n.children, buildSubtree(childSpec, child))
 	}

@@ -13,6 +13,7 @@ import (
 // particular file format's on-disk shape.
 type Node struct {
 	Text     string
+	Color    string // "#rrggbb"; empty when the file doesn't specify one
 	Children []Node
 }
 
@@ -22,6 +23,7 @@ type Node struct {
 // type.
 type Outline interface {
 	OutlineText() string
+	OutlineColor() string // "#rrggbb"
 	OutlineChildren() []Outline
 }
 
@@ -42,6 +44,7 @@ type opmlBody struct {
 
 type opmlOutline struct {
 	Text     string        `xml:"text,attr"`
+	Color    string        `xml:"color,attr,omitempty"`
 	Outlines []opmlOutline `xml:"outline"`
 }
 
@@ -67,7 +70,7 @@ func LoadOPML(path string) (Node, error) {
 }
 
 func outlineToNode(o opmlOutline) Node {
-	n := Node{Text: o.Text}
+	n := Node{Text: o.Text, Color: o.Color}
 	for _, c := range o.Outlines {
 		n.Children = append(n.Children, outlineToNode(c))
 	}
@@ -98,7 +101,7 @@ func SaveOPML(path string, root Outline) error {
 }
 
 func outlineToXML(o Outline) opmlOutline {
-	out := opmlOutline{Text: o.OutlineText()}
+	out := opmlOutline{Text: o.OutlineText(), Color: o.OutlineColor()}
 	for _, c := range o.OutlineChildren() {
 		out.Outlines = append(out.Outlines, outlineToXML(c))
 	}
