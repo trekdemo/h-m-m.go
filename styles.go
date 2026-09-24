@@ -28,11 +28,9 @@ func levelColor(depth int) color.Color {
 // nodeStyle is the shared box style for a node of the given color.
 func nodeStyle(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
-		Width(boxTextWidth).
 		Padding(0, 1).
 		Foreground(c).
-		Background(lipgloss.Darken(c, 0.8)).
-		BorderForeground(c)
+		Background(lipgloss.Darken(c, 0.8))
 }
 
 // selectedStyle derives the style drawn for the selected node.
