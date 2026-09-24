@@ -2,6 +2,9 @@ package main
 
 import (
 	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"hmm/navigator"
@@ -133,6 +136,7 @@ func TestMoveSiblingKeepsRootChildrenOnTheirSide(t *testing.T) {
 	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
 		{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"},
 	}})
+	layoutTree(root) // assigns sides: a, c right; b, d left
 	a := root.children[0]
 
 	if !moveSibling(a, 1) {
@@ -304,5 +308,82 @@ func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
 	}
 	if gaps[0] <= rowGap {
 		t.Fatalf("gaps = %v: the small siblings were packed, not spread", gaps)
+	}
+}
+
+// sidesOf returns the side of each of root's children, by text.
+func sidesOf(root *node) map[string]string {
+	out := map[string]string{}
+	for _, c := range root.children {
+		out[c.box.text] = map[side]string{sideRight: "right", sideLeft: "left"}[c.side]
+	}
+	return out
+}
+
+func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
+	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
+		{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"},
+	}})
+	layoutTree(root)
+	want := map[string]string{"a": "right", "b": "left", "c": "right", "d": "left"}
+	if got := sidesOf(root); !equalSides(got, want) {
+		t.Fatalf("initial sides = %v, want %v", got, want)
+	}
+
+	// A sibling added after a right-side branch joins it on the right,
+	// and nobody else moves.
+	sib := addSiblingAfter(root.children[0])
+	sib.box.text = "a2"
+	layoutTree(root)
+	want["a2"] = "right"
+	if got := sidesOf(root); !equalSides(got, want) {
+		t.Fatalf("after adding a sibling, sides = %v, want %v", got, want)
+	}
+
+	// Removing a branch doesn't move the ones after it either.
+	removeNode(root.children[2]) // b
+	layoutTree(root)
+	delete(want, "b")
+	if got := sidesOf(root); !equalSides(got, want) {
+		t.Fatalf("after removing a branch, sides = %v, want %v", got, want)
+	}
+
+	// A new child of the root balances the sides: right has a, a2, c
+	// and left only d, so it goes left.
+	child := addChild(root)
+	child.box.text = "e"
+	layoutTree(root)
+	want["e"] = "left"
+	if got := sidesOf(root); !equalSides(got, want) {
+		t.Fatalf("after adding a root child, sides = %v, want %v", got, want)
+	}
+}
+
+func equalSides(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func TestSidesAreNotSaved(t *testing.T) {
+	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{{Text: "a"}, {Text: "b"}}})
+	layoutTree(root)
+
+	path := filepath.Join(t.TempDir(), "tree.opml")
+	if err := storage.SaveOPML(path, root); err != nil {
+		t.Fatalf("SaveOPML: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "side=") {
+		t.Fatalf("saved OPML carries layout sides:\n%s", data)
 	}
 }

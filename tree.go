@@ -33,7 +33,8 @@ type node struct {
 	box      box
 	parent   *node
 	children []*node
-	idx      int // index into the flattened boxes/nodes slices
+	idx      int  // index into the flattened boxes/nodes slices
+	side     side // which side of the root this grows on; only set on the root's children
 }
 
 // Bounds, Parent, and Children implement navigator.Node, letting node be
@@ -151,6 +152,7 @@ func addSiblingAfter(n *node) *node {
 	}
 	sib := newNode("", childColor(n.parent))
 	sib.parent = n.parent
+	sib.side = n.side
 	siblings := n.parent.children
 	i := 0
 	for ; i < len(siblings); i++ {
@@ -191,19 +193,16 @@ func prevSibling(n *node) *node {
 	return nil
 }
 
-// moveSibling swaps n with the sibling delta positions away in its
-// parent's children (delta -1 moves it earlier, +1 later), leaving it
-// selected in its new position. The root's children alternate sides (see
-// splitSides), so for them the step is doubled to swap with the next
-// sibling on the same side: the node moves up or down, never across. It's
-// a no-op (returning false) if n has no parent or the swap would go out of
-// bounds.
+// moveSibling swaps n with its nearest sibling in direction delta (-1
+// earlier, +1 later) that grows on the same side of the root, leaving it
+// selected in its new position. Below the root's children every sibling
+// shares n's side, so that's simply the adjacent one; among the root's
+// children it skips over the other side's, so the node moves up or down
+// without ever jumping across. It's a no-op (returning false) if n has no
+// parent or there's no such sibling.
 func moveSibling(n *node, delta int) bool {
 	if n.parent == nil {
 		return false
-	}
-	if n.parent.parent == nil {
-		delta *= 2
 	}
 	siblings := n.parent.children
 	i := 0
@@ -213,6 +212,9 @@ func moveSibling(n *node, delta int) bool {
 		}
 	}
 	j := i + delta
+	for j >= 0 && j < len(siblings) && siblings[j].side != n.side {
+		j += delta
+	}
 	if j < 0 || j >= len(siblings) {
 		return false
 	}
@@ -240,9 +242,8 @@ func removeNode(n *node) *node {
 }
 
 // layoutTree lays the tree out bidirectionally, like Mermaid's tidy-tree
-// mindmap layout: the root sits at the origin and its children are split
-// into two sides by alternating index (1st, 3rd, 5th... grow to the right,
-// 2nd, 4th, 6th... grow to the left). Each side is then laid out as its own
+// mindmap layout: the root sits at the origin and each of its children
+// grows to the right or to the left of it (see splitSides). Each side is then laid out as its own
 // non-layered tidy tree (see tidy.go), rotated so depth runs horizontally.
 // The root stays at (0, 0) across relayouts, so editing never makes it
 // jump.
@@ -254,6 +255,7 @@ func layoutTree(root *node) {
 }
 
 // side is the direction a half of the tree grows away from the root in.
+// The zero value means a root child hasn't been given a side yet.
 type side int
 
 const (
@@ -261,12 +263,35 @@ const (
 	sideLeft  side = -1
 )
 
-// splitSides divides the root's children between the two sides by
-// alternating index, starting on the right, so a root with a single child
-// still reads left-to-right.
+// splitSides divides the root's children between the two sides, keeping
+// each child on the side it already has so adding, removing or reordering
+// siblings never moves a branch across while the app runs. Sides aren't
+// saved, so a child without one yet (every branch of a freshly loaded
+// tree, or a newly added one) goes to whichever side currently has fewer
+// branches, the right one on a tie: a loaded tree alternates right, left,
+// right... like Mermaid's, and a root with a single child still reads
+// left-to-right.
 func splitSides(children []*node) (right, left []*node) {
-	for i, c := range children {
-		if i%2 == 0 {
+	nRight, nLeft := 0, 0
+	for _, c := range children {
+		switch c.side {
+		case sideRight:
+			nRight++
+		case sideLeft:
+			nLeft++
+		}
+	}
+	for _, c := range children {
+		if c.side == 0 {
+			if nRight <= nLeft {
+				c.side = sideRight
+				nRight++
+			} else {
+				c.side = sideLeft
+				nLeft++
+			}
+		}
+		if c.side == sideRight {
 			right = append(right, c)
 		} else {
 			left = append(left, c)
