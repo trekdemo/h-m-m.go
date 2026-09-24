@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 
+	"hmm/layout"
 	"hmm/navigator"
 	"hmm/storage"
 
@@ -14,6 +15,9 @@ const (
 	colGap       = 6  // horizontal gap between a parent and its children (room for connector lines)
 	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
 )
+
+// spacing is the room the layout keeps around boxes.
+var spacing = layout.Spacing{Depth: colGap, Breadth: rowGap}
 
 // box is a piece of text rendered inside a rounded border, positioned
 // somewhere on the virtual canvas.
@@ -33,9 +37,31 @@ type node struct {
 	box      box
 	parent   *node
 	children []*node
-	idx      int  // index into the flattened boxes/nodes slices
-	side     side // which side of the root this grows on; only set on the root's children
+	idx      int         // index into the flattened boxes/nodes slices
+	side     layout.Side // which side of the root this grows on; only set on the root's children
 }
+
+// LayoutSize, LayoutChildren, SetLayoutPosition, LayoutSide and
+// SetLayoutSide implement layout.Node: the layout only sees each box's
+// rendered size, and hands back where the box goes.
+func (n *node) LayoutSize() (int, int) { return n.box.width, n.box.height }
+
+func (n *node) LayoutChildren() []layout.Node {
+	if len(n.children) == 0 {
+		return nil
+	}
+	out := make([]layout.Node, len(n.children))
+	for i, c := range n.children {
+		out[i] = c
+	}
+	return out
+}
+
+func (n *node) SetLayoutPosition(x, y int) { n.box.x, n.box.y = x, y }
+
+func (n *node) LayoutSide() layout.Side { return n.side }
+
+func (n *node) SetLayoutSide(s layout.Side) { n.side = s }
 
 // Bounds, Parent, and Children implement navigator.Node, letting node be
 // navigated over without the navigator package knowing about tree.go's
@@ -241,124 +267,9 @@ func removeNode(n *node) *node {
 	return parent
 }
 
-// layoutTree lays the tree out bidirectionally, like Mermaid's tidy-tree
-// mindmap layout: the root sits at the origin and each of its children
-// grows to the right or to the left of it (see splitSides). Each side is then laid out as its own
-// non-layered tidy tree (see tidy.go), rotated so depth runs horizontally.
-// The root stays at (0, 0) across relayouts, so editing never makes it
-// jump.
-func layoutTree(root *node) {
-	root.box.x, root.box.y = 0, 0
-	right, left := splitSides(root.children)
-	layoutSide(root, right, sideRight)
-	layoutSide(root, left, sideLeft)
-}
-
-// side is the direction a half of the tree grows away from the root in.
-// The zero value means a root child hasn't been given a side yet.
-type side int
-
-const (
-	sideRight side = 1
-	sideLeft  side = -1
-)
-
-// splitSides divides the root's children between the two sides, keeping
-// each child on the side it already has so adding, removing or reordering
-// siblings never moves a branch across while the app runs. Sides aren't
-// saved, so a child without one yet (every branch of a freshly loaded
-// tree, or a newly added one) goes to whichever side currently has fewer
-// branches, the right one on a tie: a loaded tree alternates right, left,
-// right... like Mermaid's, and a root with a single child still reads
-// left-to-right.
-func splitSides(children []*node) (right, left []*node) {
-	nRight, nLeft := 0, 0
-	for _, c := range children {
-		switch c.side {
-		case sideRight:
-			nRight++
-		case sideLeft:
-			nLeft++
-		}
-	}
-	for _, c := range children {
-		if c.side == 0 {
-			if nRight <= nLeft {
-				c.side = sideRight
-				nRight++
-			} else {
-				c.side = sideLeft
-				nLeft++
-			}
-		}
-		if c.side == sideRight {
-			right = append(right, c)
-		} else {
-			left = append(left, c)
-		}
-	}
-	return right, left
-}
-
-// layoutSide positions children (a subset of root's children) and their
-// descendants on one side of root. They're laid out as a tidy tree under a
-// virtual root the size of the real one, rotated so the tidy tree's depth
-// axis runs away from the root horizontally and its breadth axis runs
-// down. Each child sits colGap past its own parent's far edge, not in a
-// column shared with every other node at its depth, and sibling subtrees
-// keep at least rowGap between them wherever they'd otherwise meet. The
-// left side is the right side mirrored around the root, so a parent's
-// children always line up on the edge facing it and their connectors meet
-// at a shared trunk.
-func layoutSide(root *node, children []*node, dir side) {
-	if len(children) == 0 {
-		return
-	}
-
-	var convert func(n *node, y float64) *tidyTree
-	convert = func(n *node, y float64) *tidyTree {
-		t := &tidyTree{
-			n: n,
-			y: y,
-			w: float64(n.box.height + rowGap),
-			h: float64(n.box.width + colGap),
-		}
-		for _, c := range n.children {
-			t.c = append(t.c, convert(c, y+t.h))
-		}
-		return t
-	}
-	virtual := &tidyTree{
-		w: float64(root.box.height + rowGap),
-		h: float64(root.box.width + colGap),
-	}
-	for _, c := range children {
-		virtual.c = append(virtual.c, convert(c, virtual.h))
-	}
-
-	tidyLayout(virtual)
-
-	// Shift breadth so the virtual root lands exactly on the real one,
-	// which centers the root on this side's first level.
-	shift := float64(root.box.y) - virtual.x
-	var place func(t *tidyTree)
-	place = func(t *tidyTree) {
-		n := t.n
-		n.box.y = floorInt(t.x + shift)
-		depth := int(t.y)
-		if dir == sideRight {
-			n.box.x = root.box.x + depth
-		} else {
-			n.box.x = root.box.x + root.box.width - depth - n.box.width
-		}
-		for _, c := range t.c {
-			place(c)
-		}
-	}
-	for _, c := range virtual.c {
-		place(c)
-	}
-}
+// layoutTree positions every node of the tree as a bidirectional mindmap
+// around the root (see layout.Mindmap).
+func layoutTree(root *node) { layout.Mindmap(root, spacing) }
 
 // flattenTree walks the laid-out tree, collecting every box plus a
 // connector edge between each parent and child (see connector). It also assigns each node its flat index and

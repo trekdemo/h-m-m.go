@@ -1,4 +1,4 @@
-package main
+package layout
 
 import "math"
 
@@ -20,7 +20,8 @@ type tidyTree struct {
 	y    float64 // depth coordinate, fixed before layout
 	x    float64 // breadth coordinate, the layout's result
 	c    []*tidyTree
-	n    *node // the node this lays out, nil for a virtual root
+	n    Node // the node this lays out, nil for a virtual root
+	boxW int  // n's own width, without the gap, for mirroring the left side
 
 	prelim, mod, shift, change float64
 	tl, tr                     *tidyTree // left and right threads
