@@ -1,21 +1,35 @@
 package navigator
 
 // TreeNavigator implements Navigator using tree structure for left/right
-// (parent/first child) and box position for up/down.
+// (parent or first child, whichever lies in that direction, since a
+// bidirectional layout grows some subtrees leftwards) and box position for
+// up/down.
 type TreeNavigator struct {
 	Nodes []NavNode
 }
 
 func (t TreeNavigator) LeftOf(n NavNode) NavNode {
-	return n.Parent()
+	return towards(n, -1)
 }
 
 func (t TreeNavigator) RightOf(n NavNode) NavNode {
-	children := n.Children()
-	if len(children) == 0 {
-		return nil
+	return towards(n, 1)
+}
+
+// towards returns n's parent if it lies in direction dir (-1 left, +1
+// right) from n, otherwise n's first child that does, or nil if neither
+// does. Only the root can have children on both sides.
+func towards(n NavNode, dir int) NavNode {
+	x := n.Bounds().X
+	if p := n.Parent(); p != nil && (p.Bounds().X-x)*dir > 0 {
+		return p
 	}
-	return children[0]
+	for _, c := range n.Children() {
+		if (c.Bounds().X-x)*dir > 0 {
+			return c
+		}
+	}
+	return nil
 }
 
 // Above/Below return the nearest node in the same tree column (same x)

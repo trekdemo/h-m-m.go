@@ -1,5 +1,6 @@
 // Command bubbletea-exp renders a pannable canvas containing a tree of
-// text boxes, laid out with a tree-specialized Sugiyama-style algorithm.
+// text boxes, laid out bidirectionally around the root (like Mermaid's
+// tidy-tree mindmaps) with a tree-specialized Sugiyama-style algorithm.
 // Click and drag with the mouse to pan the canvas, like dragging a map.
 package main
 
