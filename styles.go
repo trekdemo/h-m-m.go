@@ -35,7 +35,7 @@ func nodeStyle(c color.Color) lipgloss.Style {
 
 // selectedStyle derives the style drawn for the selected node.
 func selectedStyle(base lipgloss.Style) lipgloss.Style {
-	return base.Foreground(lipgloss.White).Bold(true)
+	return base.Background(lipgloss.Yellow).Foreground(lipgloss.Black).Bold(true)
 }
 
 // hexColor formats c as "#rrggbb".
