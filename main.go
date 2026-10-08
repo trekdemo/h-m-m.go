@@ -95,29 +95,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.enterEditMode()
 			}
 		case key.Matches(msg, normalModeKeys.Left):
-			if n := m.currentNode(); n != nil {
-				if target := nav.LeftOf(n); target != nil {
-					m.setSelectedNode(target.(*node))
-				}
-			}
+			m.move(nav.LeftOf)
 		case key.Matches(msg, normalModeKeys.Right):
-			if n := m.currentNode(); n != nil {
-				if target := nav.RightOf(n); target != nil {
-					m.setSelectedNode(target.(*node))
-				}
-			}
+			m.move(nav.RightOf)
 		case key.Matches(msg, normalModeKeys.Up):
-			if n := m.currentNode(); n != nil {
-				if target := nav.Above(n); target != nil {
-					m.setSelectedNode(target.(*node))
-				}
-			}
+			m.move(nav.Above)
 		case key.Matches(msg, normalModeKeys.Down):
-			if n := m.currentNode(); n != nil {
-				if target := nav.Below(n); target != nil {
-					m.setSelectedNode(target.(*node))
-				}
-			}
+			m.move(nav.Below)
 		case key.Matches(msg, normalModeKeys.Delete):
 			if n := m.currentNode(); n != nil && n != m.root {
 				m.removeCurrentNode()
@@ -218,6 +202,17 @@ func (m *model) writeToFile() {
 		return
 	}
 	m.statusMsg = "saved to " + m.savePath
+}
+
+// move selects the node that query (one of a navigator's directional
+// lookups) finds from the current one, leaving the selection alone when
+// there's nothing in that direction.
+func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
+	if n := m.currentNode(); n != nil {
+		if target := query(n); target != nil {
+			m.setSelectedNode(target.(*node))
+		}
+	}
 }
 
 func (m *model) setSelectedNode(n *node) {
