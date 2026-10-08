@@ -225,17 +225,22 @@ func (m *model) setSelectedNode(n *node) {
 	// Shift the viewport by the minimum amount needed so the selected box is
 	// fully visible, so keyboard navigation never selects a node the user can't
 	// see.
-	b := m.boxes[m.selected]
-	if b.x < m.offsetX {
-		m.offsetX = b.x
-	} else if b.x+b.width > m.offsetX+m.viewportW {
-		m.offsetX = b.x + b.width - m.viewportW
+	b := n.box
+	m.offsetX = scrollToShow(m.offsetX, m.viewportW, b.x, b.width)
+	m.offsetY = scrollToShow(m.offsetY, m.viewportH, b.y, b.height)
+}
+
+// scrollToShow returns the viewport offset along one axis moved by the
+// minimum amount needed for the span [pos, pos+size) to be visible in a
+// viewport of length view starting at offset.
+func scrollToShow(offset, view, pos, size int) int {
+	switch {
+	case pos < offset:
+		return pos
+	case pos+size > offset+view:
+		return pos + size - view
 	}
-	if b.y < m.offsetY {
-		m.offsetY = b.y
-	} else if b.y+b.height > m.offsetY+m.viewportH {
-		m.offsetY = b.y + b.height - m.viewportH
-	}
+	return offset
 }
 
 // enterEditMode copies the selected node's text into the edit buffer and
