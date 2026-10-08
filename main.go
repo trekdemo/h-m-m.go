@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -360,13 +361,13 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) tea.Cmd {
 		return Save
 	case key.Matches(msg, editModeKeys.Backspace):
 		if m.editCurs > 0 {
-			m.editText = append(m.editText[:m.editCurs-1], m.editText[m.editCurs:]...)
+			m.editText = slices.Delete(m.editText, m.editCurs-1, m.editCurs)
 			m.editCurs--
 			m.applyEdit()
 		}
 	case key.Matches(msg, editModeKeys.Delete):
 		if m.editCurs < len(m.editText) {
-			m.editText = append(m.editText[:m.editCurs], m.editText[m.editCurs+1:]...)
+			m.editText = slices.Delete(m.editText, m.editCurs, m.editCurs+1)
 			m.applyEdit()
 		}
 	case key.Matches(msg, editModeKeys.Left):
@@ -397,11 +398,7 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) tea.Cmd {
 // the cursor past it.
 func (m *model) insertAtCursor(s string) {
 	runes := []rune(s)
-	buf := make([]rune, 0, len(m.editText)+len(runes))
-	buf = append(buf, m.editText[:m.editCurs]...)
-	buf = append(buf, runes...)
-	buf = append(buf, m.editText[m.editCurs:]...)
-	m.editText = buf
+	m.editText = slices.Insert(m.editText, m.editCurs, runes...)
 	m.editCurs += len(runes)
 }
 

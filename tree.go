@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"slices"
 
 	"hmm/navigator"
 	"hmm/storage"
@@ -153,17 +154,8 @@ func addSiblingAfter(n *node) *node {
 	sib := newNode("", childColor(n.parent))
 	sib.parent = n.parent
 	sib.side = n.side
-	siblings := n.parent.children
-	i := 0
-	for ; i < len(siblings); i++ {
-		if siblings[i] == n {
-			break
-		}
-	}
-	siblings = append(siblings, nil)
-	copy(siblings[i+2:], siblings[i+1:])
-	siblings[i+1] = sib
-	n.parent.children = siblings
+	i := slices.Index(n.parent.children, n)
+	n.parent.children = slices.Insert(n.parent.children, i+1, sib)
 	return sib
 }
 
@@ -181,16 +173,11 @@ func prevSibling(n *node) *node {
 	if n.parent == nil {
 		return nil
 	}
-	siblings := n.parent.children
-	for i, c := range siblings {
-		if c == n {
-			if i == 0 {
-				return nil
-			}
-			return siblings[i-1]
-		}
+	i := slices.Index(n.parent.children, n)
+	if i <= 0 {
+		return nil
 	}
-	return nil
+	return n.parent.children[i-1]
 }
 
 // moveSibling swaps n with its nearest sibling in direction delta (-1
@@ -205,12 +192,7 @@ func moveSibling(n *node, delta int) bool {
 		return false
 	}
 	siblings := n.parent.children
-	i := 0
-	for ; i < len(siblings); i++ {
-		if siblings[i] == n {
-			break
-		}
-	}
+	i := slices.Index(siblings, n)
 	j := i + delta
 	for j >= 0 && j < len(siblings) && siblings[j].side != n.side {
 		j += delta
@@ -231,13 +213,7 @@ func removeNode(n *node) *node {
 		return nil
 	}
 	parent := n.parent
-	siblings := parent.children
-	for i, c := range siblings {
-		if c == n {
-			parent.children = append(siblings[:i], siblings[i+1:]...)
-			break
-		}
-	}
+	parent.children = slices.DeleteFunc(parent.children, func(c *node) bool { return c == n })
 	return parent
 }
 
