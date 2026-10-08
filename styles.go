@@ -7,7 +7,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 )
 
-var levelColors = []color.Color{
+var branchColors = []color.Color{
 	lipgloss.Color("#FF6AC1"),
 	lipgloss.Color("#4EA8DE"),
 	lipgloss.Color("#FFB454"),
@@ -19,10 +19,11 @@ var rootColor = lipgloss.Color("#E6EDF3")
 
 var edgeColor = lipgloss.Color("#484f58")
 
-// levelColor returns the color for a tree depth, so each level reads as a
-// distinct band.
-func levelColor(depth int) color.Color {
-	return levelColors[depth%len(levelColors)]
+// branchColor returns the palette color for the root's i-th top-level
+// branch, cycling through branchColors so neighbouring branches read as
+// distinct. Deeper nodes inherit their branch's color (see childColor).
+func branchColor(i int) color.Color {
+	return branchColors[i%len(branchColors)]
 }
 
 // nodeStyle is the shared box style for a node of the given color.

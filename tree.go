@@ -122,7 +122,7 @@ func newNode(text string, c color.Color) *node {
 // root gets the next palette color, deeper nodes inherit their parent's.
 func childColor(parent *node) color.Color {
 	if parent.parent == nil {
-		return levelColor(len(parent.children))
+		return branchColor(len(parent.children))
 	}
 	return parent.color
 }
