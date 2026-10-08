@@ -396,9 +396,6 @@ func (m *model) insertAtCursor(s string) {
 // editingDisplayText renders the edit buffer with a cursor glyph spliced
 // in at the current cursor position, for display while editMode is active.
 func (m model) editingDisplayText() string {
-	if m.editCurs >= len(m.editText) {
-		return string(m.editText) + "▏"
-	}
 	return string(m.editText[:m.editCurs]) + "▏" + string(m.editText[m.editCurs:])
 }
 
