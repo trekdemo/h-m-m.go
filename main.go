@@ -43,7 +43,7 @@ type model struct {
 	nodes                []*node
 	selected             int // index into boxes/nodes of the selected node
 
-	savePath  string // OPML file that a SaveMsg writes the tree back to
+	savePath  string // OPML file that writeToFile writes the tree back to
 	statusMsg string // last save result, shown below the canvas until overwritten
 
 	mode     editorMode
@@ -58,20 +58,8 @@ type model struct {
 
 func (m model) Init() tea.Cmd { return nil }
 
-// SaveMsg signals that the tree should be written back to disk. Send it with
-// [Save], following the same pattern as [tea.Quit] and [tea.QuitMsg].
-type SaveMsg struct{}
-
-// Save returns a command that produces a [SaveMsg].
-func Save() tea.Msg {
-	return SaveMsg{}
-}
-
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case SaveMsg:
-		m.writeToFile()
-
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
 			cmd := m.updateEditMode(msg)
@@ -105,14 +93,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.Delete):
 			if n := m.currentNode(); n != nil && n != m.root {
 				m.removeCurrentNode()
-				return m, Save
+				m.writeToFile()
+				return m, nil
 			}
 		case key.Matches(msg, normalModeKeys.MoveSibUp):
 			m.moveSibling(-1)
-			return m, Save
+			m.writeToFile()
+			return m, nil
 		case key.Matches(msg, normalModeKeys.MoveSibDown):
 			m.moveSibling(1)
-			return m, Save
+			m.writeToFile()
+			return m, nil
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
@@ -349,7 +340,8 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, editModeKeys.Exit):
 		m.mode = normalMode
 		m.removeIfEmpty()
-		return Save
+		m.writeToFile()
+		return nil
 	case key.Matches(msg, editModeKeys.Backspace):
 		if m.editCurs > 0 {
 			m.editText = slices.Delete(m.editText, m.editCurs-1, m.editCurs)
