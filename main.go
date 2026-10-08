@@ -307,6 +307,9 @@ func (m *model) removeCurrentNode() {
 // text or is the root (which has no parent to fall back to).
 func (m *model) removeIfEmpty() {
 	n := m.currentNode()
+	if n == nil {
+		return
+	}
 	if n.box.text == "" {
 		m.removeCurrentNode()
 	}
