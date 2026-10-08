@@ -257,23 +257,14 @@ func (m *model) enterEditMode() {
 }
 
 // addSibling inserts a new, empty-text sibling right after the selected
-// node and re-lays-out the tree, returning the new node (or nil if the
-// selected node is the root, which has no siblings).
+// node (or a child, when the root is selected) and re-lays-out the tree,
+// returning the new node.
 func (m *model) addSibling() *node {
 	n := m.currentNode()
 	if n == nil {
 		return nil
 	}
-
-	var sib *node
-	if n == m.root {
-		sib = addChild(n)
-	} else {
-		sib = addSiblingAfter(n)
-	}
-	if sib == nil {
-		return nil
-	}
+	sib := addSiblingAfter(n)
 
 	m.boxes, m.edges, m.nodes = relayout(m.root)
 	m.setSelectedNode(sib)

@@ -145,11 +145,11 @@ func buildSubtree(spec storage.Node, n *node) *node {
 }
 
 // addSiblingAfter inserts a new, empty-text node into n's parent's children
-// right after n, and returns it. It returns nil if n has no parent (the
-// root has no siblings).
+// right after n, and returns it. The root has no siblings, so for the root
+// it adds a child instead.
 func addSiblingAfter(n *node) *node {
 	if n.parent == nil {
-		return nil
+		return addChild(n)
 	}
 	sib := newNode("", childColor(n.parent))
 	sib.parent = n.parent
