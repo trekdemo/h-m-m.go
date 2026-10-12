@@ -11,19 +11,17 @@ import (
 )
 
 const (
-	boxTextWidth = 30 // max characters per line inside a box
-	colGap       = 6  // horizontal gap between a parent and its children (room for connector lines)
-	rowGap       = 1  // minimum vertical gap kept between sibling subtrees
+	colGap = 6 // horizontal gap between a parent and its children (room for connector lines)
+	rowGap = 1 // minimum vertical gap kept between sibling subtrees
 )
 
-// box is a piece of text rendered inside a rounded border, positioned
-// somewhere on the virtual canvas.
+// box is a piece of text rendered, positioned somewhere on the virtual canvas.
 type box struct {
-	x, y          int // top-left position in canvas coordinates
-	width, height int // rendered size, including the border
 	text          string
-	style         lipgloss.Style // normal border
-	selStyle      lipgloss.Style // double border, drawn for the selected node
+	x, y          int // top-left position in canvas coordinates
+	width, height int // rendered size, including the padding
+	style         lipgloss.Style
+	selStyle      lipgloss.Style // drawn for the selected node
 }
 
 // Bounds reports the box's position and rendered size in canvas coordinates.
