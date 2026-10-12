@@ -36,10 +36,10 @@ func (b textBox) Bounds() navigator.Rect {
 	return navigator.Rect{X: b.x, Y: b.y, Width: b.Width(), Height: b.Height()}
 }
 
-// boxesCentroid returns the center point of the bounding box that encloses
+// BoxesCentroid returns the center point of the bounding box that encloses
 // all boxes, so the initial viewport can be aimed at where the tree
 // actually is.
-func boxesCentroid(boxes []textBox) (int, int) {
+func BoxesCentroid(boxes []textBox) (int, int) {
 	if len(boxes) == 0 {
 		return 0, 0
 	}

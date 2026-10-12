@@ -180,7 +180,7 @@ func (m *model) updateViewportSize() {
 }
 
 func (m *model) centerOnTree() {
-	cx, cy := boxesCentroid(m.boxes)
+	cx, cy := BoxesCentroid(m.boxes)
 	m.offsetX = cx - m.viewportW/2
 	m.offsetY = cy - m.viewportH/2
 }
