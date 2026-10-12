@@ -6,8 +6,6 @@ import (
 
 	"hmm/navigator"
 	"hmm/storage"
-
-	lipgloss "charm.land/lipgloss/v2"
 )
 
 const (
@@ -15,26 +13,12 @@ const (
 	rowGap = 1 // minimum vertical gap kept between sibling subtrees
 )
 
-// box is a piece of text rendered, positioned somewhere on the virtual canvas.
-type box struct {
-	text          string
-	x, y          int // top-left position in canvas coordinates
-	width, height int // rendered size, including the padding
-	style         lipgloss.Style
-	selStyle      lipgloss.Style // drawn for the selected node
-}
-
-// Bounds reports the box's position and rendered size in canvas coordinates.
-func (b box) Bounds() navigator.Rect {
-	return navigator.Rect{X: b.x, Y: b.y, Width: b.width, Height: b.height}
-}
-
 // node is a treeSpec after box rendering and layout: it carries its
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
 type node struct {
 	color    color.Color
-	box      box
+	box      textBox
 	parent   *node
 	children []*node
 	idx      int  // index into the flattened boxes/nodes slices
@@ -106,26 +90,22 @@ type edge struct {
 }
 
 // newNode is shared by the initial build and by edits that insert nodes
-// later, so both produce identically styled boxes. It renders the text once
-// to measure the box, and derives the selected style up front so drawing
-// the selection never rebuilds styles. Position and tree links are left
-// zero for the caller and layoutTree to fill in.
+// later, so both produce identically styled boxes. It derives the selected
+// style up front so drawing the selection never rebuilds styles. Position
+// and tree links are left zero for the caller and layoutTree to fill in.
 func newNode(text string, c color.Color) *node {
 	style := nodeStyle(c)
 	selStyle := selectedStyle(style)
 
-	rendered := style.Render(text)
-
-	return &node{
+	n := &node{
 		color: c,
-		box: box{
-			width:    lipgloss.Width(rendered),
-			height:   lipgloss.Height(rendered),
-			text:     text,
+		box: textBox{
 			style:    style,
 			selStyle: selStyle,
 		},
 	}
+	n.box.setText(text)
+	return n
 }
 
 // childColor gives every top-level branch its own color so branches are
@@ -314,8 +294,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		t := &tidyTree{
 			n: n,
 			y: y,
-			w: float64(n.box.height + rowGap),
-			h: float64(n.box.width + colGap),
+			w: float64(n.box.Height() + rowGap),
+			h: float64(n.box.Width() + colGap),
 		}
 		for _, c := range n.children {
 			t.c = append(t.c, convert(c, y+t.h))
@@ -323,8 +303,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		return t
 	}
 	virtual := &tidyTree{
-		w: float64(root.box.height + rowGap),
-		h: float64(root.box.width + colGap),
+		w: float64(root.box.Height() + rowGap),
+		h: float64(root.box.Width() + colGap),
 	}
 	for _, c := range children {
 		virtual.c = append(virtual.c, convert(c, virtual.h))
@@ -343,7 +323,7 @@ func layoutSide(root *node, children []*node, dir side) {
 		if dir == sideRight {
 			n.box.x = root.box.x + depth
 		} else {
-			n.box.x = root.box.x + root.box.width - depth - n.box.width
+			n.box.x = root.box.x + root.box.Width() - depth - n.box.Width()
 		}
 		for _, c := range t.c {
 			place(c)
@@ -358,7 +338,7 @@ func layoutSide(root *node, children []*node, dir side) {
 // with. A single preorder walk fills boxes and nodes in lockstep and
 // stores each node's position as its idx, so a node, its box, and the
 // selection index always agree.
-func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
+func flattenTree(n *node, boxes *[]textBox, edges *[]edge, nodes *[]*node) {
 	n.idx = len(*boxes)
 	*boxes = append(*boxes, n.box)
 	*nodes = append(*nodes, n)
@@ -375,24 +355,24 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 func connector(p, c *node) edge {
 	if c.box.x < p.box.x {
 		return edge{
-			x1: c.box.x + c.box.width - 1,
-			y1: c.box.y + c.box.height/2,
+			x1: c.box.x + c.box.Width() - 1,
+			y1: c.box.y + c.box.Height()/2,
 			x2: p.box.x - 1,
-			y2: p.box.y + p.box.height/2,
+			y2: p.box.y + p.box.Height()/2,
 		}
 	}
 	return edge{
-		x1: p.box.x + p.box.width,
-		y1: p.box.y + p.box.height/2,
+		x1: p.box.x + p.box.Width(),
+		y1: p.box.y + p.box.Height()/2,
 		x2: c.box.x,
-		y2: c.box.y + c.box.height/2,
+		y2: c.box.y + c.box.Height()/2,
 	}
 }
 
 // buildScene is the one-call setup for a freshly loaded spec: build, lay
 // out, flatten. It also returns the root so later edits can relayout the
 // same tree instead of rebuilding it.
-func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes []*node) {
+func buildScene(spec storage.Node) (root *node, boxes []textBox, edges []edge, nodes []*node) {
 	root = buildTree(spec)
 	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
@@ -405,7 +385,7 @@ func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes
 // positions. If the edit didn't change the tree's shape (e.g. a text edit),
 // idx values stay the same because the preorder walk visits nodes in the
 // same order; otherwise callers should re-select by node.
-func relayout(root *node) (boxes []box, edges []edge, nodes []*node) {
+func relayout(root *node) (boxes []textBox, edges []edge, nodes []*node) {
 	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
 	return boxes, edges, nodes

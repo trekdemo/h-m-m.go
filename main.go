@@ -38,7 +38,7 @@ type model struct {
 	viewportW, viewportH int // canvas area, i.e. the window minus the help view
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	root                 *node
-	boxes                []box
+	boxes                []textBox
 	edges                []edge
 	nodes                []*node
 	selected             int // index into boxes/nodes of the selected node
@@ -217,8 +217,8 @@ func (m *model) setSelectedNode(n *node) {
 	// fully visible, so keyboard navigation never selects a node the user can't
 	// see.
 	b := n.box
-	m.offsetX = scrollToShow(m.offsetX, m.viewportW, b.x, b.width)
-	m.offsetY = scrollToShow(m.offsetY, m.viewportH, b.y, b.height)
+	m.offsetX = scrollToShow(m.offsetX, m.viewportW, b.x, b.Width())
+	m.offsetY = scrollToShow(m.offsetY, m.viewportH, b.y, b.Height())
 }
 
 // scrollToShow returns the viewport offset along one axis moved by the
@@ -325,11 +325,7 @@ func (m *model) applyEdit() {
 	if n == nil {
 		return
 	}
-	n.box.text = string(m.editText)
-	rendered := n.box.style.Render(n.box.text)
-	n.box.width = lipgloss.Width(rendered)
-	n.box.height = lipgloss.Height(rendered)
-
+	n.box.setText(string(m.editText))
 	m.boxes, m.edges, m.nodes = relayout(m.root)
 	m.setSelectedNode(m.nodes[m.selected])
 }
@@ -406,7 +402,7 @@ func (m model) currentNode() *node {
 func (m model) nodeAt(x, y int) int {
 	x, y = x+m.offsetX, y+m.offsetY
 	for i, b := range m.boxes {
-		if x >= b.x && x < b.x+b.width && y >= b.y && y < b.y+b.height {
+		if x >= b.x && x < b.x+b.Width() && y >= b.y && y < b.y+b.Height() {
 			return i
 		}
 	}
@@ -441,41 +437,22 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	var layers []*lipgloss.Layer
 	for i, b := range m.boxes {
 		sx, sy := b.x-m.offsetX, b.y-m.offsetY
-		if sx+b.width <= 0 || sx >= m.viewportW || sy+b.height <= 0 || sy >= m.viewportH {
+		if sx+b.Width() <= 0 || sx >= m.viewportW || sy+b.Height() <= 0 || sy >= m.viewportH {
 			continue // fully off screen
 		}
-		style := b.style
-		text := b.text
+		rendered := b.Render()
 		if i == m.selected {
-			style = b.selStyle
+			rendered = b.RenderAsSelected()
 			if m.mode == editMode {
-				text = m.editingDisplayText()
+				// The cursor lives in the edit buffer, not the box text.
+				rendered = b.selStyle.Render(m.editingDisplayText())
 			}
 		}
-		layers = append(layers, lipgloss.NewLayer(style.Render(text)).X(sx).Y(sy))
+		layers = append(layers, lipgloss.NewLayer(rendered).X(sx).Y(sy))
 	}
 	canvas.Compose(lipgloss.NewCompositor(layers...))
 
 	return canvas
-}
-
-// boxesCentroid returns the center point of the bounding box that encloses
-// all boxes, so the initial viewport can be aimed at where the tree
-// actually is.
-func boxesCentroid(boxes []box) (int, int) {
-	if len(boxes) == 0 {
-		return 0, 0
-	}
-
-	minX, minY := boxes[0].x, boxes[0].y
-	maxX, maxY := boxes[0].x+boxes[0].width, boxes[0].y+boxes[0].height
-	for _, b := range boxes[1:] {
-		minX = min(minX, b.x)
-		minY = min(minY, b.y)
-		maxX = max(maxX, b.x+b.width)
-		maxY = max(maxY, b.y+b.height)
-	}
-	return (minX + maxX) / 2, (minY + maxY) / 2
 }
 
 func newModel(spec storage.Node, savePath string) model {
