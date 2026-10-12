@@ -115,8 +115,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
-			if hit := m.nodeAt(msg.X, msg.Y); hit >= 0 {
-				m.selected = hit
+			if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
+				m.setSelectedNode(hit)
 			}
 			m.dragging = true
 			m.lastX, m.lastY = msg.X, msg.Y
@@ -216,9 +216,8 @@ func (m *model) setSelectedNode(n *node) {
 	// Shift the viewport by the minimum amount needed so the selected box is
 	// fully visible, so keyboard navigation never selects a node the user can't
 	// see.
-	b := n.box
-	m.offsetX = scrollToShow(m.offsetX, m.viewportW, b.x, b.Width())
-	m.offsetY = scrollToShow(m.offsetY, m.viewportH, b.y, b.Height())
+	m.offsetX = scrollToShow(m.offsetX, m.viewportW, n.x, n.Width())
+	m.offsetY = scrollToShow(m.offsetY, m.viewportH, n.y, n.Height())
 }
 
 // scrollToShow returns the viewport offset along one axis moved by the
@@ -243,7 +242,7 @@ func (m *model) enterEditMode() {
 		return
 	}
 	m.mode = editMode
-	m.editText = []rune(n.box.text)
+	m.editText = []rune(n.text)
 	m.editCurs = len(m.editText)
 }
 
@@ -310,7 +309,7 @@ func (m *model) removeIfEmpty() {
 	if n == nil {
 		return
 	}
-	if n.box.text == "" {
+	if n.text == "" {
 		m.removeCurrentNode()
 	}
 }
@@ -325,7 +324,7 @@ func (m *model) applyEdit() {
 	if n == nil {
 		return
 	}
-	n.box.setText(string(m.editText))
+	n.setText(string(m.editText))
 	m.boxes, m.edges, m.nodes = relayout(m.root)
 	m.setSelectedNode(m.nodes[m.selected])
 }
@@ -399,14 +398,14 @@ func (m model) currentNode() *node {
 
 // nodeAt returns the index of the box at viewport coordinates (x, y), or -1
 // if no box covers that point.
-func (m model) nodeAt(x, y int) int {
+func (m model) nodeAt(x, y int) *node {
 	x, y = x+m.offsetX, y+m.offsetY
 	for i, b := range m.boxes {
 		if x >= b.x && x < b.x+b.Width() && y >= b.y && y < b.y+b.Height() {
-			return i
+			return m.nodes[i]
 		}
 	}
-	return -1
+	return nil
 }
 
 // buildCanvas composites the connector edges and boxes currently visible in

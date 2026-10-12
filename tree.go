@@ -17,22 +17,12 @@ const (
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
 type node struct {
+	textBox
 	color    color.Color
-	box      textBox
 	parent   *node
 	children []*node
 	idx      int  // index into the flattened boxes/nodes slices
 	side     side // which side of the root this grows on; only set on the root's children
-}
-
-// Bounds, Parent, and Children implement navigator.NavNode, so the
-// navigator can walk the tree without knowing about its layout or
-// rendering. Parent returns a literal nil for the root because a nil *node
-// wrapped in the interface wouldn't compare equal to nil, and Children
-// copies element by element because Go can't reinterpret []*node as
-// []navigator.NavNode.
-func (n *node) Bounds() navigator.Rect {
-	return n.box.Bounds()
 }
 
 func (n *node) Parent() navigator.NavNode {
@@ -57,7 +47,7 @@ func (n *node) Children() []navigator.NavNode {
 // so a node is saved to OPML directly instead of being converted to an
 // intermediate type first. OutlineChildren copies into a new slice for the
 // same reason Children does.
-func (n *node) OutlineText() string { return n.box.text }
+func (n *node) OutlineText() string { return n.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
 
@@ -99,12 +89,12 @@ func newNode(text string, c color.Color) *node {
 
 	n := &node{
 		color: c,
-		box: textBox{
+		textBox: textBox{
 			style:    style,
 			selStyle: selStyle,
 		},
 	}
-	n.box.setText(text)
+	n.setText(text)
 	return n
 }
 
@@ -222,7 +212,7 @@ func removeNode(n *node) *node {
 // splitSides), and lays out each side as its own tidy tree (see
 // layoutSide).
 func layoutTree(root *node) {
-	root.box.x, root.box.y = 0, 0
+	root.x, root.y = 0, 0
 	right, left := splitSides(root.children)
 	layoutSide(root, right, sideRight)
 	layoutSide(root, left, sideLeft)
@@ -294,8 +284,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		t := &tidyTree{
 			n: n,
 			y: y,
-			w: float64(n.box.Height() + rowGap),
-			h: float64(n.box.Width() + colGap),
+			w: float64(n.Height() + rowGap),
+			h: float64(n.Width() + colGap),
 		}
 		for _, c := range n.children {
 			t.c = append(t.c, convert(c, y+t.h))
@@ -303,8 +293,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		return t
 	}
 	virtual := &tidyTree{
-		w: float64(root.box.Height() + rowGap),
-		h: float64(root.box.Width() + colGap),
+		w: float64(root.Height() + rowGap),
+		h: float64(root.Width() + colGap),
 	}
 	for _, c := range children {
 		virtual.c = append(virtual.c, convert(c, virtual.h))
@@ -314,16 +304,16 @@ func layoutSide(root *node, children []*node, dir side) {
 
 	// Shift breadth so the virtual root lands exactly on the real one,
 	// which centers the root on this side's first level.
-	shift := float64(root.box.y) - virtual.x
+	shift := float64(root.y) - virtual.x
 	var place func(t *tidyTree)
 	place = func(t *tidyTree) {
 		n := t.n
-		n.box.y = floorInt(t.x + shift)
+		n.y = floorInt(t.x + shift)
 		depth := int(t.y)
 		if dir == sideRight {
-			n.box.x = root.box.x + depth
+			n.x = root.x + depth
 		} else {
-			n.box.x = root.box.x + root.box.Width() - depth - n.box.Width()
+			n.x = root.x + root.Width() - depth - n.Width()
 		}
 		for _, c := range t.c {
 			place(c)
@@ -340,7 +330,7 @@ func layoutSide(root *node, children []*node, dir side) {
 // selection index always agree.
 func flattenTree(n *node, boxes *[]textBox, edges *[]edge, nodes *[]*node) {
 	n.idx = len(*boxes)
-	*boxes = append(*boxes, n.box)
+	*boxes = append(*boxes, n.textBox)
 	*nodes = append(*nodes, n)
 	for _, c := range n.children {
 		*edges = append(*edges, connector(n, c))
@@ -353,19 +343,19 @@ func flattenTree(n *node, boxes *[]textBox, edges *[]edge, nodes *[]*node) {
 // starts the edge at the child, mirroring the right side's edge cell for
 // cell (including which end's first cell is hidden under a box border).
 func connector(p, c *node) edge {
-	if c.box.x < p.box.x {
+	if c.x < p.x {
 		return edge{
-			x1: c.box.x + c.box.Width() - 1,
-			y1: c.box.y + c.box.Height()/2,
-			x2: p.box.x - 1,
-			y2: p.box.y + p.box.Height()/2,
+			x1: c.x + c.Width() - 1,
+			y1: c.y + c.Height()/2,
+			x2: p.x - 1,
+			y2: p.y + p.Height()/2,
 		}
 	}
 	return edge{
-		x1: p.box.x + p.box.Width(),
-		y1: p.box.y + p.box.Height()/2,
-		x2: c.box.x,
-		y2: c.box.y + c.box.Height()/2,
+		x1: p.x + p.Width(),
+		y1: p.y + p.Height()/2,
+		x2: c.x,
+		y2: c.y + c.Height()/2,
 	}
 }
 
