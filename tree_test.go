@@ -71,14 +71,14 @@ func TestLayoutIsBidirectional(t *testing.T) {
 	}
 	root, _, _, _ := buildScene(demoTree)
 
-	if root.box.x != 0 || root.box.y != 0 {
-		t.Fatalf("root at (%d, %d), want (0, 0)", root.box.x, root.box.y)
+	if root.x != 0 || root.y != 0 {
+		t.Fatalf("root at (%d, %d), want (0, 0)", root.x, root.y)
 	}
 	if len(root.children) < 2 {
 		t.Fatalf("demo tree needs at least 2 root children, has %d", len(root.children))
 	}
 
-	rootCenter := root.box.y + root.box.Height()/2
+	rootCenter := root.y + root.Height()/2
 	for dir, wantRight := range []bool{true, false} {
 		var firstLevel []*node
 		for i, c := range root.children {
@@ -87,17 +87,17 @@ func TestLayoutIsBidirectional(t *testing.T) {
 			}
 			firstLevel = append(firstLevel, c)
 			eachDescendant(c, func(d *node) {
-				if wantRight && d.box.x < root.box.x+root.box.Width()+colGap {
-					t.Errorf("%q should be right of the root, got x=%d", d.box.text, d.box.x)
+				if wantRight && d.x < root.x+root.Width()+colGap {
+					t.Errorf("%q should be right of the root, got x=%d", d.text, d.x)
 				}
-				if !wantRight && d.box.x+d.box.Width() > root.box.x-colGap {
-					t.Errorf("%q should be left of the root, got x=%d", d.box.text, d.box.x)
+				if !wantRight && d.x+d.Width() > root.x-colGap {
+					t.Errorf("%q should be left of the root, got x=%d", d.text, d.x)
 				}
 			})
 		}
 
 		first, last := firstLevel[0], firstLevel[len(firstLevel)-1]
-		mid := (first.box.y + last.box.y + last.box.Height()) / 2
+		mid := (first.y + last.y + last.Height()) / 2
 		if d := mid - rootCenter; d < -1 || d > 1 {
 			t.Errorf("side (right=%v) first level centered at y=%d, root at y=%d", wantRight, mid, rootCenter)
 		}
@@ -106,7 +106,7 @@ func TestLayoutIsBidirectional(t *testing.T) {
 	// Left-side columns are right-aligned, so siblings share a trunk.
 	left := root.children[1]
 	for _, c := range left.children {
-		if c.box.x+c.box.Width() != left.children[0].box.x+left.children[0].box.Width() {
+		if c.x+c.Width() != left.children[0].x+left.children[0].Width() {
 			t.Errorf("left-side siblings not right-aligned: %+v", left.children)
 		}
 	}
@@ -122,7 +122,7 @@ func TestConnectorMirrorsAcrossSides(t *testing.T) {
 
 	// Cell x on the right mirrors to cell mirror-x on the left, where
 	// mirror is the root's first and last cell summed.
-	mirror := root.box.x + root.box.x + root.box.Width() - 1
+	mirror := root.x + root.x + root.Width() - 1
 	r, l := connector(root, right), connector(root, left)
 	if r.x1+l.x2 != mirror || r.x2+l.x1 != mirror {
 		t.Fatalf("connectors not mirrored around the root: right %+v, left %+v", r, l)
@@ -144,7 +144,7 @@ func TestMoveSiblingKeepsRootChildrenOnTheirSide(t *testing.T) {
 	}
 	var got []string
 	for _, c := range root.children {
-		got = append(got, c.box.text)
+		got = append(got, c.text)
 	}
 	if want := []string{"c", "b", "a", "d"}; !equalStrings(got, want) {
 		t.Fatalf("children = %v, want %v", got, want)
@@ -156,7 +156,7 @@ func TestMoveSiblingKeepsRootChildrenOnTheirSide(t *testing.T) {
 	// Deeper nodes still move one step at a time.
 	child := buildTree(storage.Node{Text: "p", Children: []storage.Node{{Text: "x"}, {Text: "y"}}})
 	child.parent = root
-	if !moveSibling(child.children[0], 1) || child.children[0].box.text != "y" {
+	if !moveSibling(child.children[0], 1) || child.children[0].text != "y" {
 		t.Fatal("non-root siblings should swap with their immediate neighbor")
 	}
 }
@@ -200,7 +200,7 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 	}
 	for _, c := range cases {
 		if c.got != navigator.NavNode(c.want) {
-			t.Errorf("%s = %v, want %q", c.name, c.got, c.want.box.text)
+			t.Errorf("%s = %v, want %q", c.name, c.got, c.want.text)
 		}
 	}
 	if got := nav.LeftOf(left.children[0]); got != nil {
@@ -213,7 +213,7 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 func sizedNode(w, h int, children ...*node) *node {
 	text := strings.TrimSuffix(strings.Repeat(strings.Repeat("x", w)+"\n", h), "\n")
 	n := &node{children: children}
-	n.box.setText(text)
+	n.setText(text)
 	for _, c := range children {
 		c.parent = n
 	}
@@ -243,9 +243,9 @@ func TestTidyLayoutRandomTrees(t *testing.T) {
 		for i, a := range all {
 			for _, b := range all[i+1:] {
 				// Boxes sharing any column must also keep rowGap between them.
-				if a.box.x < b.box.x+b.box.Width() && b.box.x < a.box.x+a.box.Width() &&
-					a.box.y < b.box.y+b.box.Height()+rowGap && b.box.y < a.box.y+a.box.Height()+rowGap {
-					t.Fatalf("iter %d: boxes too close: %+v vs %+v", iter, a.box, b.box)
+				if a.x < b.x+b.Width() && b.x < a.x+a.Width() &&
+					a.y < b.y+b.Height()+rowGap && b.y < a.y+a.Height()+rowGap {
+					t.Fatalf("iter %d: boxes too close: %+v vs %+v", iter, a, b)
 				}
 			}
 		}
@@ -255,16 +255,16 @@ func TestTidyLayoutRandomTrees(t *testing.T) {
 				return
 			}
 			for _, c := range n.children {
-				right := c.box.x == n.box.x+n.box.Width()+colGap
-				left := c.box.x+c.box.Width()+colGap == n.box.x
+				right := c.x == n.x+n.Width()+colGap
+				left := c.x+c.Width()+colGap == n.x
 				if !right && !left {
-					t.Fatalf("iter %d: child %+v not colGap past its parent %+v", iter, c.box, n.box)
+					t.Fatalf("iter %d: child %+v not colGap past its parent %+v", iter, c, n)
 				}
 			}
 			first, last := n.children[0], n.children[len(n.children)-1]
-			span := first.box.y + last.box.y + last.box.Height()
-			if d := 2*n.box.y + n.box.Height() - span; d < -2 || d > 2 {
-				t.Fatalf("iter %d: parent %+v not centered on children %+v..%+v", iter, n.box, first.box, last.box)
+			span := first.y + last.y + last.Height()
+			if d := 2*n.y + n.Height() - span; d < -2 || d > 2 {
+				t.Fatalf("iter %d: parent %+v not centered on children %+v..%+v", iter, n, first, last)
 			}
 		})
 	}
@@ -277,11 +277,11 @@ func TestTidyLayoutIsNonLayered(t *testing.T) {
 	layoutTree(root)
 
 	gw, gn := wide.children[0], narrow.children[0]
-	if gw.box.x == gn.box.x {
-		t.Fatalf("grandchildren share a column (x=%d); each should sit just past its own parent", gw.box.x)
+	if gw.x == gn.x {
+		t.Fatalf("grandchildren share a column (x=%d); each should sit just past its own parent", gw.x)
 	}
-	if gn.box.x != narrow.box.x+narrow.box.Width()+colGap {
-		t.Fatalf("narrow parent's child at x=%d, want %d", gn.box.x, narrow.box.x+narrow.box.Width()+colGap)
+	if gn.x != narrow.x+narrow.Width()+colGap {
+		t.Fatalf("narrow parent's child at x=%d, want %d", gn.x, narrow.x+narrow.Width()+colGap)
 	}
 }
 
@@ -301,7 +301,7 @@ func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
 	var gaps []int
 	for i := 1; i < len(parent.children); i++ {
 		prev, cur := parent.children[i-1], parent.children[i]
-		gaps = append(gaps, cur.box.y-(prev.box.y+prev.box.Height()))
+		gaps = append(gaps, cur.y-(prev.y+prev.Height()))
 	}
 	for _, g := range gaps {
 		if g-gaps[0] < -1 || g-gaps[0] > 1 {
@@ -317,7 +317,7 @@ func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
 func sidesOf(root *node) map[string]string {
 	out := map[string]string{}
 	for _, c := range root.children {
-		out[c.box.text] = map[side]string{sideRight: "right", sideLeft: "left"}[c.side]
+		out[c.text] = map[side]string{sideRight: "right", sideLeft: "left"}[c.side]
 	}
 	return out
 }
@@ -335,7 +335,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 	// A sibling added after a right-side branch joins it on the right,
 	// and nobody else moves.
 	sib := addSiblingAfter(root.children[0])
-	sib.box.setText("a2")
+	sib.setText("a2")
 	layoutTree(root)
 	want["a2"] = "right"
 	if got := sidesOf(root); !equalSides(got, want) {
@@ -353,7 +353,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 	// A new child of the root balances the sides: right has a, a2, c
 	// and left only d, so it goes left.
 	child := addChild(root)
-	child.box.setText("e")
+	child.setText("e")
 	layoutTree(root)
 	want["e"] = "left"
 	if got := sidesOf(root); !equalSides(got, want) {
