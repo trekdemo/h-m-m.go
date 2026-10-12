@@ -26,6 +26,11 @@ type box struct {
 	selStyle      lipgloss.Style // double border, drawn for the selected node
 }
 
+// Bounds reports the box's position and rendered size in canvas coordinates.
+func (b box) Bounds() navigator.Rect {
+	return navigator.Rect{X: b.x, Y: b.y, Width: b.width, Height: b.height}
+}
+
 // node is a treeSpec after box rendering and layout: it carries its
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
@@ -42,7 +47,7 @@ type node struct {
 // navigated over without the navigator package knowing about tree.go's
 // layout or rendering details.
 func (n *node) Bounds() navigator.Rect {
-	return navigator.Rect{X: n.box.x, Y: n.box.y, Width: n.box.width, Height: n.box.height}
+	return n.box.Bounds()
 }
 
 func (n *node) Parent() navigator.NavNode {
