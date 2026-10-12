@@ -73,12 +73,6 @@ func navNodes(nodes []*node) []navigator.NavNode {
 	return out
 }
 
-// edge is a connector line between a parent box and a child box, in canvas
-// coordinates, always running left to right (x1 < x2).
-type edge struct {
-	x1, y1, x2, y2 int
-}
-
 // newNode is shared by the initial build and by edits that insert nodes
 // later, so both produce identically styled boxes. It derives the selected
 // style up front so drawing the selection never rebuilds styles. Position
@@ -364,8 +358,7 @@ func connector(p, c *node) edge {
 // same tree instead of rebuilding it.
 func buildScene(spec storage.Node) (root *node, boxes []textBox, edges []edge, nodes []*node) {
 	root = buildTree(spec)
-	layoutTree(root)
-	flattenTree(root, &boxes, &edges, &nodes)
+	boxes, edges, nodes = relayout(root)
 	return root, boxes, edges, nodes
 }
 
@@ -398,6 +391,12 @@ const (
 	dirEast
 	dirWest
 )
+
+// edge is a connector line between a parent box and a child box, in canvas
+// coordinates, always running left to right (x1 < x2).
+type edge struct {
+	x1, y1, x2, y2 int
+}
 
 // edgeCell is a single character position belonging to a drawn edge, and
 // the direction(s) the line runs through it. Accumulating these (via OR)
