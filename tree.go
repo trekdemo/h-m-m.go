@@ -43,9 +43,12 @@ type node struct {
 	side     side // which side of the root this grows on; only set on the root's children
 }
 
-// Bounds, Parent, and Children implement navigator.Node, letting node be
-// navigated over without the navigator package knowing about tree.go's
-// layout or rendering details.
+// Bounds, Parent, and Children implement navigator.NavNode, so the
+// navigator can walk the tree without knowing about its layout or
+// rendering. Parent returns a literal nil for the root because a nil *node
+// wrapped in the interface wouldn't compare equal to nil, and Children
+// copies element by element because Go can't reinterpret []*node as
+// []navigator.NavNode.
 func (n *node) Bounds() navigator.Rect {
 	return n.box.Bounds()
 }
@@ -68,8 +71,10 @@ func (n *node) Children() []navigator.NavNode {
 	return out
 }
 
-// OutlineText and OutlineChildren implement storage.Outline, letting a node
-// be saved to OPML directly, without converting to an intermediate type.
+// OutlineText, OutlineColor, and OutlineChildren implement storage.Outline,
+// so a node is saved to OPML directly instead of being converted to an
+// intermediate type first. OutlineChildren copies into a new slice for the
+// same reason Children does.
 func (n *node) OutlineText() string { return n.box.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
@@ -85,8 +90,9 @@ func (n *node) OutlineChildren() []storage.Outline {
 	return out
 }
 
-// navNodes converts a flat node slice into navigator.Node, for building a
-// navigator over the whole tree's nodes.
+// navNodes exists because navigators take their nodes as interfaces, and
+// Go can't reinterpret the model's []*node as []navigator.NavNode, so it
+// copies element by element.
 func navNodes(nodes []*node) []navigator.NavNode {
 	out := make([]navigator.NavNode, len(nodes))
 	for i, n := range nodes {
@@ -101,10 +107,11 @@ type edge struct {
 	x1, y1, x2, y2 int
 }
 
-// newNode builds a single node's box (wrapping text to boxTextWidth, drawn
-// in the given color) without attaching it to a tree, for reuse by both
-// buildTree and callers that insert a node after the initial build (e.g.
-// adding a sibling).
+// newNode is shared by the initial build and by edits that insert nodes
+// later, so both produce identically styled boxes. It renders the text once
+// to measure the box, and derives the selected style up front so drawing
+// the selection never rebuilds styles. Position and tree links are left
+// zero for the caller and layoutTree to fill in.
 func newNode(text string, c color.Color) *node {
 	style := nodeStyle(c)
 	selStyle := selectedStyle(style)
@@ -123,8 +130,10 @@ func newNode(text string, c color.Color) *node {
 	}
 }
 
-// childColor picks the color for a new child of parent: each child of the
-// root gets the next palette color, deeper nodes inherit their parent's.
+// childColor gives every top-level branch its own color so branches are
+// easy to tell apart, while descendants inherit theirs so a branch reads as
+// one unit. A child of the root is colored by how many siblings it already
+// has, which steps through the palette as branches are added.
 func childColor(parent *node) color.Color {
 	if parent.parent == nil {
 		return branchColor(len(parent.children))
@@ -132,14 +141,16 @@ func childColor(parent *node) color.Color {
 	return parent.color
 }
 
-// buildTree renders each spec node into a box (wrapping text to
-// boxTextWidth) and returns the corresponding node tree. The root uses
-// rootColor and colors from the spec take precedence; see childColor for how
-// nodes without one are colored.
+// buildTree turns a loaded spec into the mutable node tree the app edits
+// and lays out. Only the root is special-cased, falling back to rootColor
+// when the spec has no color; buildSubtree handles everything below it.
 func buildTree(spec storage.Node) *node {
 	return buildSubtree(spec, newNode(spec.Text, colorOr(spec.Color, rootColor)))
 }
 
+// buildSubtree recurses depth-first, preferring each spec node's own color
+// and falling back to childColor so files saved without colors still get
+// colored branches.
 func buildSubtree(spec storage.Node, n *node) *node {
 	for _, childSpec := range spec.Children {
 		child := newNode(childSpec.Text, colorOr(childSpec.Color, childColor(n)))
@@ -149,9 +160,11 @@ func buildSubtree(spec storage.Node, n *node) *node {
 	return n
 }
 
-// addSiblingAfter inserts a new, empty-text node into n's parent's children
-// right after n, and returns it. The root has no siblings, so for the root
-// it adds a child instead.
+// addSiblingAfter inserts right after n so the new node appears next to
+// where the user is looking. It copies n's side so a new root branch stays
+// on the same half of the map as n. The root has no siblings, so it falls
+// back to adding a child rather than doing nothing. The text starts empty
+// for the user to type into.
 func addSiblingAfter(n *node) *node {
 	if n.parent == nil {
 		return addChild(n)
@@ -164,7 +177,9 @@ func addSiblingAfter(n *node) *node {
 	return sib
 }
 
-// addChild appends a new, empty-text node as n's last child and returns it.
+// addChild appends at the end, matching how outliners add children. The
+// child's side is left unset, so a new root branch is placed on whichever
+// side splitSides finds less crowded at the next layout.
 func addChild(n *node) *node {
 	child := newNode("", childColor(n))
 	child.parent = n
@@ -172,8 +187,10 @@ func addChild(n *node) *node {
 	return child
 }
 
-// prevSibling returns the node immediately before n in its parent's
-// children, or nil if n has no parent or is already its first child.
+// prevSibling lets deletion move the selection to the node just above the
+// removed one, keeping the user near where they were. It returns nil for
+// the root and for a first child, leaving the caller to fall back to the
+// parent.
 func prevSibling(n *node) *node {
 	if n.parent == nil {
 		return nil
@@ -185,13 +202,12 @@ func prevSibling(n *node) *node {
 	return n.parent.children[i-1]
 }
 
-// moveSibling swaps n with its nearest sibling in direction delta (-1
-// earlier, +1 later) that grows on the same side of the root, leaving it
-// selected in its new position. Below the root's children every sibling
-// shares n's side, so that's simply the adjacent one; among the root's
-// children it skips over the other side's, so the node moves up or down
-// without ever jumping across. It's a no-op (returning false) if n has no
-// parent or there's no such sibling.
+// moveSibling reorders by swapping n with the nearest sibling in direction
+// delta that grows on the same side of the root, so the node moves up or
+// down on screen without ever jumping across the root. Below the root's
+// children every sibling shares n's side, so that's simply the adjacent
+// one. It reports whether anything moved so the caller can skip a
+// needless relayout.
 func moveSibling(n *node, delta int) bool {
 	if n.parent == nil {
 		return false
@@ -209,10 +225,9 @@ func moveSibling(n *node, delta int) bool {
 	return true
 }
 
-// removeNode detaches n (and, since they're only reachable through n, its
-// whole subtree) from its parent's children and returns the parent. It
-// returns nil without modifying the tree if n has no parent, since the
-// root can't be removed.
+// removeNode only needs to drop n from its parent's children: the whole
+// subtree is reachable solely through n, so it goes with it. The root
+// can't be removed, so it's refused with a nil return.
 func removeNode(n *node) *node {
 	if n.parent == nil {
 		return nil
@@ -222,12 +237,12 @@ func removeNode(n *node) *node {
 	return parent
 }
 
-// layoutTree lays the tree out bidirectionally, like Mermaid's tidy-tree
-// mindmap layout: the root sits at the origin and each of its children
-// grows to the right or to the left of it (see splitSides). Each side is then laid out as its own
-// non-layered tidy tree (see tidy.go), rotated so depth runs horizontally.
-// The root stays at (0, 0) across relayouts, so editing never makes it
-// jump.
+// layoutTree grows the map in both directions from the root, like
+// Mermaid's tidy-tree mindmap layout, so it stays compact instead of
+// sprawling to one side. It pins the root at the origin, so editing never
+// makes it jump, splits the root's branches between the sides (see
+// splitSides), and lays out each side as its own tidy tree (see
+// layoutSide).
 func layoutTree(root *node) {
 	root.box.x, root.box.y = 0, 0
 	right, left := splitSides(root.children)
@@ -281,16 +296,16 @@ func splitSides(children []*node) (right, left []*node) {
 	return right, left
 }
 
-// layoutSide positions children (a subset of root's children) and their
-// descendants on one side of root. They're laid out as a tidy tree under a
-// virtual root the size of the real one, rotated so the tidy tree's depth
-// axis runs away from the root horizontally and its breadth axis runs
-// down. Each child sits colGap past its own parent's far edge, not in a
-// column shared with every other node at its depth, and sibling subtrees
-// keep at least rowGap between them wherever they'd otherwise meet. The
-// left side is the right side mirrored around the root, so a parent's
-// children always line up on the edge facing it and their connectors meet
-// at a shared trunk.
+// layoutSide lays out one side's branches as a non-layered tidy tree (see
+// tidy.go), so each child sits colGap past its own parent's far edge rather
+// than in a column shared with every node at its depth, and sibling
+// subtrees pack as closely as rowGap allows. The tidy layout grows
+// downward, so it's fed boxes with their axes swapped (a box's height as
+// tidy width, its width as tidy depth) and the result is rotated back. The
+// branches hang under a virtual root the size of the real one, so the real
+// root lands centered on its first level. The left side mirrors the right
+// around the root, so a parent's children always line up on the edge
+// facing it and their connectors meet at a shared trunk.
 func layoutSide(root *node, children []*node, dir side) {
 	if len(children) == 0 {
 		return
@@ -341,10 +356,10 @@ func layoutSide(root *node, children []*node, dir side) {
 	}
 }
 
-// flattenTree walks the laid-out tree, collecting every box plus a
-// connector edge between each parent and child (see connector). It also assigns each node its flat index and
-// collects the nodes themselves, in the same order as boxes, so callers
-// can navigate the tree structure (parent/children/siblings) by index.
+// flattenTree produces the flat slices the renderer and the model work
+// with. A single preorder walk fills boxes and nodes in lockstep and
+// stores each node's position as its idx, so a node, its box, and the
+// selection index always agree.
 func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 	n.idx = len(*boxes)
 	*boxes = append(*boxes, n.box)
@@ -355,11 +370,10 @@ func flattenTree(n *node, boxes *[]box, edges *[]edge, nodes *[]*node) {
 	}
 }
 
-// connector returns the edge between parent p and child c. Edges always
-// run left to right, so on the left side of the tree it goes from the
-// child's right-middle edge to the parent's left-middle edge, mirroring
-// the right side's parent-to-child edge cell for cell (including which
-// end's first cell is hidden under a box border).
+// connector joins the facing middles of a parent and child box. Because
+// edgeCells assumes edges run left to right, a child on the left side
+// starts the edge at the child, mirroring the right side's edge cell for
+// cell (including which end's first cell is hidden under a box border).
 func connector(p, c *node) edge {
 	if c.box.x < p.box.x {
 		return edge{
@@ -377,11 +391,9 @@ func connector(p, c *node) edge {
 	}
 }
 
-// buildScene builds and lays out a tree from spec, returning the root node
-// (so callers can re-layout it later, e.g. after an edit changes a box's
-// size), its boxes and connector edges in canvas coordinates, plus the
-// underlying nodes (in the same order as boxes) for tree-structured
-// navigation.
+// buildScene is the one-call setup for a freshly loaded spec: build, lay
+// out, flatten. It also returns the root so later edits can relayout the
+// same tree instead of rebuilding it.
 func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes []*node) {
 	root = buildTree(spec)
 	layoutTree(root)
@@ -389,10 +401,12 @@ func buildScene(spec storage.Node) (root *node, boxes []box, edges []edge, nodes
 	return root, boxes, edges, nodes
 }
 
-// relayout re-runs the tree layout on root (e.g. after a box's text edit
-// changed its width/height) and re-flattens it, returning fresh boxes,
-// edges, and nodes in the same order/idx as before, since flattening walks
-// the tree structure the same way every time.
+// relayout recomputes everything from scratch after any edit, because a
+// single box changing size or a node being added can shift every other
+// box; a full pass is cheap at mindmap sizes and far simpler than patching
+// positions. If the edit didn't change the tree's shape (e.g. a text edit),
+// idx values stay the same because the preorder walk visits nodes in the
+// same order; otherwise callers should re-select by node.
 func relayout(root *node) (boxes []box, edges []edge, nodes []*node) {
 	layoutTree(root)
 	flattenTree(root, &boxes, &edges, &nodes)
@@ -427,16 +441,14 @@ type edgeCell struct {
 	dir  direction
 }
 
-// edgeCells computes the cells of an orthogonal (elbow) connector from
-// e.x1,e.y1 to e.x2,e.y2: out horizontally from the left box, a vertical
-// jog at the midpoint between the two columns, then horizontally into the
-// right box. Siblings sharing a parent and column also share their jog's x
-// position, so they read as branches off one vertical trunk.
+// edgeCells draws connectors as elbows that jog vertically halfway
+// between the two boxes. Siblings share a parent edge and a column, so
+// their jogs land on the same x and read as branches off one vertical
+// trunk.
 //
-// Each cell only carries the direction(s) this one edge threads through
-// it (e.g. a plain horizontal run is east+west, an elbow is two adjacent
-// directions); which box-drawing rune a cell ends up as depends on
-// merging in every edge that touches it, so that step is deferred to
+// Each cell only records the directions this one edge passes through it,
+// not a rune, because the right character depends on every edge touching
+// that cell; the caller ORs them together and resolves the rune with
 // dirToRune.
 func edgeCells(e edge) []edgeCell {
 	if e.y1 == e.y2 {
@@ -471,10 +483,10 @@ func edgeCells(e edge) []edgeCell {
 	return cells
 }
 
-// dirToRune converts an accumulated set of directions at a cell into the
-// single box-drawing character that represents all of them: a straight
-// line, a rounded elbow where exactly two adjacent directions meet, or a
-// square junction (├ ┤ ┬ ┴ ┼) where three or four lines meet.
+// dirToRune uses rounded elbows to match the boxes' rounded borders, but
+// has to fall back to square junctions where three or four lines meet,
+// since Unicode has no rounded T or cross. A lone direction (a stub end)
+// still draws as a straight line rather than disappearing.
 func dirToRune(d direction) rune {
 	switch d {
 	case dirNorth, dirSouth, dirNorth | dirSouth:
