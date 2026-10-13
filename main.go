@@ -99,6 +99,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveSibling(1)
 			m.writeToFile()
 			return m, nil
+		case key.Matches(msg, normalModeKeys.ToggleCollapse):
+			m.toggleCollapsed()
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
@@ -258,6 +260,20 @@ func (m *model) moveSibling(dir int) {
 	}
 }
 
+// toggleCollapsed collapses or expands the selected node. It doesn't
+// save: collapsed state is view state, so toggling it isn't an edit. The
+// selected node stays visible either way, so re-selecting it only scrolls
+// as far as needed to keep it on screen after the relayout.
+func (m *model) toggleCollapsed() {
+	n := m.selected
+	if !n.canCollapse() {
+		return
+	}
+	n.collapsed = !n.collapsed
+	layoutTree(m.root)
+	m.setSelectedNode(n)
+}
+
 // removeCurrentNode deletes the selected node and selects its previous
 // sibling, or its parent if it has none. The tree is re-laid-out before
 // selecting, so the viewport scrolls to where the target ends up rather
@@ -380,7 +396,7 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	// edge's rune happened to be drawn last.
 	dirs := map[point]direction{}
 	for n := range m.root.All() {
-		for _, child := range n.children {
+		for _, child := range n.visibleChildren() {
 			for _, c := range edgeCells(connector(n, child)) {
 				dirs[point{c.x, c.y}] |= c.dir
 			}

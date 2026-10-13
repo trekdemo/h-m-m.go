@@ -23,11 +23,32 @@ type node struct {
 	parent   *node
 	children []*node
 	side     side // which side of the root this grows on; only set on the root's children
+
+	// collapsed hides n's descendants from layout, drawing and navigation.
+	// It's view state, so it isn't saved, and it's kept on hidden nodes so
+	// a nested collapse survives its ancestor being collapsed and expanded.
+	collapsed bool
 }
 
-// All yields n and every node below it in preorder, so drawing, hit
-// testing and centering read the tree itself rather than a flattened copy
-// that would need re-syncing after every edit.
+// visibleChildren is what everything on screen sees of n's children:
+// none while n is collapsed. Edits and saving use children directly,
+// because hidden nodes are still part of the map.
+func (n *node) visibleChildren() []*node {
+	if n.collapsed {
+		return nil
+	}
+	return n.children
+}
+
+// canCollapse is false for leaves, which have nothing to hide, and for the
+// root, which would hide the whole map.
+func (n *node) canCollapse() bool {
+	return n.parent != nil && len(n.children) > 0
+}
+
+// All yields n and every visible node below it in preorder, so drawing,
+// hit testing and centering read the tree itself rather than a flattened
+// copy that would need re-syncing after every edit.
 func (n *node) All() iter.Seq[*node] {
 	return func(yield func(*node) bool) { n.walk(yield) }
 }
@@ -36,7 +57,7 @@ func (n *node) walk(yield func(*node) bool) bool {
 	if !yield(n) {
 		return false
 	}
-	for _, c := range n.children {
+	for _, c := range n.visibleChildren() {
 		if !c.walk(yield) {
 			return false
 		}
@@ -51,12 +72,15 @@ func (n *node) Parent() navigator.NavNode {
 	return n.parent
 }
 
+// Children only reports visible children, so navigators treat a collapsed
+// node as a leaf and never select a hidden node.
 func (n *node) Children() []navigator.NavNode {
-	if len(n.children) == 0 {
+	visible := n.visibleChildren()
+	if len(visible) == 0 {
 		return nil
 	}
-	out := make([]navigator.NavNode, len(n.children))
-	for i, c := range n.children {
+	out := make([]navigator.NavNode, len(visible))
+	for i, c := range visible {
 		out[i] = c
 	}
 	return out
@@ -65,7 +89,8 @@ func (n *node) Children() []navigator.NavNode {
 // OutlineText, OutlineColor, and OutlineChildren implement storage.Outline,
 // so a node is saved to OPML directly instead of being converted to an
 // intermediate type first. OutlineChildren copies into a new slice for the
-// same reason Children does.
+// same reason Children does, but includes hidden children, since collapsing
+// must never drop nodes from the file.
 func (n *node) OutlineText() string { return n.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
@@ -292,7 +317,7 @@ func layoutSide(root *node, children []*node, dir side) {
 			w: float64(n.Height() + rowGap),
 			h: float64(n.Width() + colGap),
 		}
-		for _, c := range n.children {
+		for _, c := range n.visibleChildren() {
 			t.c = append(t.c, convert(c, y+t.h))
 		}
 		return t

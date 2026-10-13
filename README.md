@@ -100,11 +100,18 @@ hmm path/to/map.opml
 | `d`, `Backspace`        | Delete the selected node and its subtree     |
 | `K`                     | Move the node up among its siblings          |
 | `J`                     | Move the node down among its siblings        |
+| `Space`                 | Collapse or expand the selected node         |
 | `?`                     | Toggle the full help                         |
 | `q`, `Esc`, `Ctrl+C`    | Quit                                         |
 
 Adding a sibling to the root adds a child instead, since the root has no
 siblings. The root itself can't be deleted.
+
+Collapsing a node hides everything below it until you expand it again.
+Collapsing is just a way of looking at the map: it isn't saved, so a map
+always opens fully expanded. The root and nodes without children can't be
+collapsed. While a node is collapsed, the arrow keys treat it as if it had
+no children.
 
 ### Edit mode
 
