@@ -36,6 +36,26 @@ written straight back to a plain OPML file.
 
 ## Installation
 
+### Prebuilt binary (Linux and macOS)
+
+Download the archive for your platform from the
+[latest release](https://github.com/trekdemo/h-m-m.go/releases/latest),
+extract it, and put `hmm` on your `$PATH`:
+
+```sh
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')          # linux or darwin
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+TAG=$(curl -fsSL https://api.github.com/repos/trekdemo/h-m-m.go/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4)
+curl -fsSL "https://github.com/trekdemo/h-m-m.go/releases/download/${TAG}/hmm_${TAG#v}_${OS}_${ARCH}.tar.gz" | tar -xz hmm
+mv hmm ~/.local/bin/
+hmm --version
+```
+
+On macOS, a binary downloaded through a browser may be quarantined; clear it
+with `xattr -d com.apple.quarantine hmm`.
+
+### From source
+
 You need [Go](https://go.dev/dl/) 1.25 or newer.
 
 ```sh
@@ -197,3 +217,15 @@ issue first so we can talk it over.
 - [Charm](https://charm.sh)'s Bubble Tea, Bubbles, Lip Gloss and VHS.
 - A. van der Ploeg, *Drawing Non-layered Tidy Trees in Linear Time*,
   Software: Practice and Experience, 2014.
+
+## Releasing
+
+Releases are built by [GoReleaser](https://goreleaser.com) in GitHub Actions
+(`.github/workflows/release.yml`). Push a semver tag and the workflow runs the
+tests, then publishes `tar.gz` archives for Linux and macOS (amd64 and arm64)
+plus a `checksums.txt` to a GitHub release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
