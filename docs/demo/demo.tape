@@ -37,6 +37,13 @@ Type "k" Sleep 500ms
 Tab Sleep 400ms
 Type "Nishiki market" Sleep 400ms
 Escape Sleep 1s
+# collapse Kyoto and Logistics, then expand Kyoto again
+Type "l" Sleep 500ms
+Space Sleep 1s
+Type "j" Sleep 500ms
+Space Sleep 1.2s
+Type "k" Sleep 500ms
+Space Sleep 1.2s
 # peek at the full help
 Type "?" Sleep 2s
 Type "?" Sleep 1s
