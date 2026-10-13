@@ -112,7 +112,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
-			if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
+			if hit := m.markerAt(msg.X, msg.Y); hit != nil {
+				hit.collapsed = false
+				layoutTree(m.root)
+				m.setSelectedNode(hit)
+			} else if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
 				m.setSelectedNode(hit)
 			}
 			m.dragging = true
@@ -383,6 +387,18 @@ func (m model) nodeAt(x, y int) *node {
 	x, y = x+m.offsetX, y+m.offsetY
 	for n := range m.root.All() {
 		if n.Bounds().Contains(x, y) {
+			return n
+		}
+	}
+	return nil
+}
+
+// markerAt returns the collapsed node whose marker covers viewport
+// coordinates (x, y), or nil if no marker does.
+func (m model) markerAt(x, y int) *node {
+	x, y = x+m.offsetX, y+m.offsetY
+	for n := range m.root.All() {
+		if n.collapsed && n.markerBounds().Contains(x, y) {
 			return n
 		}
 	}

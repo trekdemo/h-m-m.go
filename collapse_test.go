@@ -299,3 +299,23 @@ func TestWideMarkerIsLaidOutOfTheWay(t *testing.T) {
 		}
 	}
 }
+
+func TestClickingMarkerExpandsAndSelects(t *testing.T) {
+	m := newCollapseModel(t)
+	branch := m.root.children[0]
+	m.setSelectedNode(branch)
+	m = pressSpace(m)
+	m.setSelectedNode(m.root)
+
+	mb := branch.markerBounds()
+	x, y := mb.X+mb.Width-1-m.offsetX, mb.Y-m.offsetY
+	mm, _ := m.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	m = mm.(model)
+
+	if branch.collapsed {
+		t.Fatal("clicking the marker should expand the node")
+	}
+	if m.selected != branch {
+		t.Fatalf("selected %q, want the expanded node", m.selected.text)
+	}
+}

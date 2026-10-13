@@ -27,6 +27,8 @@ written straight back to a plain OPML file.
 - **Colour-coded branches.** Each top-level branch gets its own colour from
   the palette, and its descendants inherit it. Colours are saved to the
   file, so you can tweak them by hand.
+- **Collapsible subtrees.** `Space` hides everything below a node, and a
+  `+N` marker shows how many nodes are tucked away.
 - **Mouse support.** Click a node to select it, or drag to pan the canvas
   like a map.
 - **Autosave to OPML.** Changes are saved as soon as you leave edit mode,
@@ -136,6 +138,7 @@ while clearing the text of a node with children never deletes them.
 | Action      | Effect             |
 | ----------- | ------------------ |
 | Click       | Select a node      |
+| Click a `+N` marker | Expand a collapsed node |
 | Click + drag | Pan the canvas    |
 
 ## File format
@@ -206,10 +209,10 @@ after UI changes.
 
 h-m-m.go is a young project and doesn't do everything the original
 h-m-m does yet. Today it covers the core loop: open a map, navigate,
-add, edit, delete, reorder and autosave. Things that would bring it
-closer to the original include:
+add, edit, delete, reorder, collapse and autosave. Things that would
+bring it closer to the original include:
 
-- [ ] Collapsing and expanding subtrees
+- [x] Collapsing and expanding subtrees
 - [ ] Search
 - [ ] Undo / redo
 - [ ] Copy, cut and paste of subtrees
