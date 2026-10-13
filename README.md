@@ -40,21 +40,9 @@ written straight back to a plain OPML file.
 
 ### Prebuilt binary (Linux and macOS)
 
-Download the archive for your platform from the
-[latest release](https://github.com/trekdemo/h-m-m.go/releases/latest),
-extract it, and put `hmm` on your `$PATH`:
+Download the archive for your platform from the [latest release](https://github.com/trekdemo/h-m-m.go/releases/latest), extract it, and put `hmm` on your `$PATH`:
 
-```sh
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')          # linux or darwin
-ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-TAG=$(curl -fsSL https://api.github.com/repos/trekdemo/h-m-m.go/releases/latest | grep -m1 '"tag_name"' | cut -d'"' -f4)
-curl -fsSL "https://github.com/trekdemo/h-m-m.go/releases/download/${TAG}/hmm_${TAG#v}_${OS}_${ARCH}.tar.gz" | tar -xz hmm
-mv hmm ~/.local/bin/
-hmm --version
-```
-
-On macOS, a binary downloaded through a browser may be quarantined; clear it
-with `xattr -d com.apple.quarantine hmm`.
+On macOS, a binary downloaded through a browser may be quarantined; clear it with `xattr -d com.apple.quarantine hmm`.
 
 ### From source
 
@@ -63,8 +51,8 @@ You need [Go](https://go.dev/dl/) 1.25 or newer.
 ```sh
 git clone https://github.com/trekdemo/h-m-m.go.git
 cd h-m-m.go
-make build            # produces bin/hmm
-cp bin/hmm ~/.local/bin/   # or anywhere on your $PATH
+make build                # produces bin/hmm
+cp bin/hmm ~/.local/bin/  # or anywhere on your $PATH
 ```
 
 Or, to try it without installing:
@@ -84,10 +72,6 @@ hmm path/to/map.opml
   file is created the first time you save.
 - Without an argument, `hmm` opens `docs/tutorial.opml`, a mind map that
   teaches you the key bindings. Run it from the repository root.
-
-> [!TIP]
-> Pick a terminal with true-colour support (most modern ones have it) to
-> see the full branch palette.
 
 ## Key bindings
 
