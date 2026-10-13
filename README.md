@@ -108,6 +108,8 @@ Adding a sibling to the root adds a child instead, since the root has no
 siblings. The root itself can't be deleted.
 
 Collapsing a node hides everything below it until you expand it again.
+A collapsed node shows a stub and a count of the hidden nodes, such as
+`Tokyo ─ +3`, on the side its children grow on.
 Collapsing is just a way of looking at the map: it isn't saved, so a map
 always opens fully expanded. The root and nodes without children can't be
 collapsed. While a node is collapsed, the arrow keys treat it as if it had

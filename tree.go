@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"iter"
 	"slices"
+
+	lipgloss "charm.land/lipgloss/v2"
 
 	"hmm/navigator"
 	"hmm/storage"
@@ -44,6 +47,48 @@ func (n *node) visibleChildren() []*node {
 // root, which would hide the whole map.
 func (n *node) canCollapse() bool {
 	return n.parent != nil && len(n.children) > 0
+}
+
+// marker is the stub and count drawn beside a collapsed node, so it
+// doesn't pass for a leaf: "─ +5" on the side its children would grow on,
+// mirrored to "+5 ─" on the left. The count includes every hidden node,
+// not just direct children, to show how much is tucked away. Expanded
+// nodes have no marker.
+func (n *node) marker() string {
+	if !n.collapsed {
+		return ""
+	}
+	count := fmt.Sprintf("+%d", n.descendantCount())
+	if n.growsLeft() {
+		return count + " ─"
+	}
+	return "─ " + count
+}
+
+// markerBounds is where marker is drawn: level with the box's middle, the
+// same row a connector to its children would leave from, and touching the
+// box on the side the children grow on.
+func (n *node) markerBounds() navigator.Rect {
+	w := lipgloss.Width(n.marker())
+	x := n.x + n.Width()
+	if n.growsLeft() {
+		x = n.x - w
+	}
+	return navigator.Rect{X: x, Y: n.y + n.Height()/2, Width: w, Height: 1}
+}
+
+// growsLeft reports whether n's children are laid out to its left, which
+// is the case for every node on the root's left side.
+func (n *node) growsLeft() bool {
+	return n.parent != nil && n.x < n.parent.x
+}
+
+func (n *node) descendantCount() int {
+	count := 0
+	for _, c := range n.children {
+		count += 1 + c.descendantCount()
+	}
+	return count
 }
 
 // reveal expands every collapsed ancestor of n, and nothing else, so n
@@ -330,7 +375,7 @@ func layoutSide(root *node, children []*node, dir side) {
 			n: n,
 			y: y,
 			w: float64(n.Height() + rowGap),
-			h: float64(n.Width() + colGap),
+			h: float64(n.Width() + reach(n)),
 		}
 		for _, c := range n.visibleChildren() {
 			t.c = append(t.c, convert(c, y+t.h))
@@ -367,6 +412,15 @@ func layoutSide(root *node, children []*node, dir side) {
 	for _, c := range virtual.c {
 		place(c)
 	}
+}
+
+// reach is how far past its box a node claims room in the layout. It's
+// usually colGap, the room its connectors need. A collapsed node's marker
+// sits in that room too, so a marker wider than colGap claims its own
+// width plus a cell of space instead, keeping it clear of neighbouring
+// subtrees that the tidy layout would otherwise pack right up against it.
+func reach(n *node) int {
+	return max(colGap, lipgloss.Width(n.marker())+1)
 }
 
 // connector joins the facing middles of a parent and child box. Because

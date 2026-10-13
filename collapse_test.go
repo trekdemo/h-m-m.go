@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -183,5 +184,118 @@ func TestSelectingAHiddenNodeRevealsOnlyItsAncestors(t *testing.T) {
 	}
 	if !slices.Contains(slices.Collect(m.root.All()), bud) {
 		t.Fatal("the selected node is still hidden")
+	}
+}
+
+func TestMarkerCountsAllHiddenDescendants(t *testing.T) {
+	m := newCollapseModel(t)
+	branch := m.root.children[0]
+	branch.children[0].collapsed = true
+	m.setSelectedNode(branch)
+	m = pressSpace(m)
+
+	if got, want := branch.marker(), "─ +2"; got != want {
+		t.Fatalf("marker = %q, want %q", got, want)
+	}
+	if out := m.View().Content; !strings.Contains(out, "+2") {
+		t.Fatalf("marker isn't drawn:\n%s", out)
+	}
+	if got := m.root.children[1].marker(); got != "" {
+		t.Fatalf("expanded node has marker %q, want none", got)
+	}
+}
+
+func TestMarkerPointsWhereChildrenGrow(t *testing.T) {
+	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
+		{Text: "right", Children: []storage.Node{{Text: "r"}}},
+		{Text: "left", Children: []storage.Node{{Text: "l"}}},
+	}})
+	right, left := root.children[0], root.children[1]
+	right.collapsed, left.collapsed = true, true
+	layoutTree(root)
+
+	if got := left.marker(); got != "+1 ─" {
+		t.Fatalf("left-side marker = %q, want %q", got, "+1 ─")
+	}
+	if mb := right.markerBounds(); mb.X != right.x+right.Width() {
+		t.Fatalf("right-side marker starts at x=%d, want just past the box at %d", mb.X, right.x+right.Width())
+	}
+	if mb := left.markerBounds(); mb.X+mb.Width != left.x {
+		t.Fatalf("left-side marker ends at x=%d, want just before the box at %d", mb.X+mb.Width, left.x)
+	}
+}
+
+// TestMarkersNeverOverlapBoxes collapses a scattering of nodes in randomly
+// shaped trees and checks the layout left room for every marker: the tidy
+// layout only keeps boxes apart, so a marker it didn't know about could
+// have a cousin's subtree packed right on top of it.
+func TestMarkersNeverOverlapBoxes(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for trial := range 200 {
+		root := buildTree(randomSpec(rng, 0))
+		i := 0
+		eachDescendant(root, func(n *node) {
+			if n.canCollapse() && i%3 == trial%3 {
+				n.collapsed = true
+			}
+			i++
+		})
+		layoutTree(root)
+
+		nodes := slices.Collect(root.All())
+		for _, a := range nodes {
+			if !a.collapsed {
+				continue
+			}
+			mb := a.markerBounds()
+			for _, b := range nodes {
+				if rectsOverlap(mb.X, mb.Y, mb.Width, mb.Height, b.x, b.y, b.Width(), b.Height()) {
+					t.Fatalf("trial %d: marker of %q overlaps box %q", trial, a.text, b.text)
+				}
+			}
+		}
+	}
+}
+
+// randomSpec builds a small tree with varied text widths, so narrow
+// collapsed nodes sit next to wide cousins with deep subtrees.
+func randomSpec(rng *rand.Rand, depth int) storage.Node {
+	n := storage.Node{Text: strings.Repeat("w", 1+rng.Intn(12))}
+	if depth < 4 {
+		for range rng.Intn(4) {
+			n.Children = append(n.Children, randomSpec(rng, depth+1))
+		}
+	}
+	return n
+}
+
+// TestWideMarkerIsLaidOutOfTheWay covers markers wider than colGap, which
+// the gap every box already leaves past its edge can't absorb. The
+// collapsed node's sibling has enough children that, centred on it, they
+// reach up level with the marker.
+func TestWideMarkerIsLaidOutOfTheWay(t *testing.T) {
+	many := make([]storage.Node, 1000)
+	fan := make([]storage.Node, 8)
+	for i := range fan {
+		fan[i] = storage.Node{Text: "fan"}
+	}
+	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
+		{Text: "p", Children: []storage.Node{
+			{Text: "a", Children: many},
+			{Text: "b", Children: fan},
+		}},
+	}})
+	a := root.children[0].children[0]
+	a.collapsed = true
+	layoutTree(root)
+
+	mb := a.markerBounds()
+	if mb.Width <= colGap {
+		t.Fatalf("marker %q isn't wider than colGap, so this test proves nothing", a.marker())
+	}
+	for b := range root.All() {
+		if rectsOverlap(mb.X, mb.Y, mb.Width, mb.Height, b.x, b.y, b.Width(), b.Height()) {
+			t.Fatalf("marker %q overlaps box %q at %+v", a.marker(), b.text, b.Bounds())
+		}
 	}
 }

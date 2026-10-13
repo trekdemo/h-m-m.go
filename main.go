@@ -431,6 +431,11 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 			}
 		}
 		layers = append(layers, lipgloss.NewLayer(rendered).X(sx).Y(sy))
+		if n.collapsed {
+			mb := n.markerBounds()
+			marker := lipgloss.NewStyle().Foreground(n.color).Render(n.marker())
+			layers = append(layers, lipgloss.NewLayer(marker).X(mb.X-m.offsetX).Y(mb.Y-m.offsetY))
+		}
 	}
 	canvas.Compose(lipgloss.NewCompositor(layers...))
 
