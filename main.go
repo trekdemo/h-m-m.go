@@ -425,9 +425,16 @@ func newModel(spec storage.Node, savePath string) model {
 	}
 }
 
+// version is set at build time by the release pipeline via -ldflags.
+var version = "dev"
+
 func main() {
 	path := defaultTreePath
 	if len(os.Args) > 1 {
+		if os.Args[1] == "--version" || os.Args[1] == "-v" {
+			fmt.Println("hmm", version)
+			return
+		}
 		path = os.Args[1]
 	}
 
