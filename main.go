@@ -273,12 +273,13 @@ func (m *model) removeCurrentNode() {
 	m.setSelectedNode(target)
 }
 
-// removeIfEmpty deletes the selected node from the tree if its text is
-// empty, re-laying-out the tree and selecting its previous sibling, or its
-// parent if it has none. It leaves the tree untouched if the node still has
-// text or is the root (which has no parent to fall back to).
+// removeIfEmpty cleans up the empty leaf left behind when the user adds a
+// node and leaves edit mode without typing. Only leaves are removed: a
+// node with children merely had its text cleared, and taking its subtree
+// with it would silently delete nodes the user never touched. The root is
+// never removed either (see removeCurrentNode).
 func (m *model) removeIfEmpty() {
-	if m.selected.text == "" {
+	if m.selected.text == "" && len(m.selected.children) == 0 {
 		m.removeCurrentNode()
 	}
 }

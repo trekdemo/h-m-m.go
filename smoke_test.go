@@ -75,3 +75,30 @@ func TestDeleteSelectsPreviousSiblingOrParent(t *testing.T) {
 		t.Fatal("deleting the root should be refused")
 	}
 }
+
+func TestLeavingEditModeOnlyRemovesEmptyLeaves(t *testing.T) {
+	m := newModel(storage.Node{Text: "root", Children: []storage.Node{
+		{Text: "parent", Children: []storage.Node{{Text: "child"}}},
+	}}, filepath.Join(t.TempDir(), "tree.opml"))
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = mm.(model)
+	parent := m.root.children[0]
+
+	m.setSelectedNode(parent)
+	m.enterEditMode()
+	m.editText = nil
+	m.applyEdit()
+	mm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = mm.(model)
+	if len(m.root.children) != 1 || len(parent.children) != 1 {
+		t.Fatal("clearing a node with children removed it and its subtree")
+	}
+
+	m.addChild()
+	m.enterEditMode()
+	mm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = mm.(model)
+	if len(parent.children) != 1 {
+		t.Fatal("leaving an empty new leaf should remove it")
+	}
+}

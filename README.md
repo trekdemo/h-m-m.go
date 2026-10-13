@@ -118,8 +118,9 @@ siblings. The root itself can't be deleted.
 | `Enter`        | Insert a newline (nodes can span several lines)   |
 | `Esc`          | Leave edit mode and save                          |
 
-If you leave edit mode on a node with no text, the node is removed. So
-`o` followed by `Esc` doesn't leave empty boxes behind.
+If you leave edit mode on a node with no text and no children, the node
+is removed. So `o` followed by `Esc` doesn't leave empty boxes behind,
+while clearing the text of a node with children never deletes them.
 
 ### Mouse
 
