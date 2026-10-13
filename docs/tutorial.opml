@@ -6,8 +6,8 @@
   <body>
     <outline text="Learn This App" color="#e6edf3">
       <outline text="1. Load a tree" color="#ff6ac1">
-        <outline text="Run with a path: ./app mytree.opml" color="#ff6ac1"></outline>
-        <outline text="No path given: starts empty with one root" color="#ff6ac1"></outline>
+        <outline text="Run with a path: hmm mytree.opml" color="#ff6ac1"></outline>
+        <outline text="A path that does not exist yet starts an empty map" color="#ff6ac1"></outline>
       </outline>
       <outline text="2. Navigate" color="#4ea8de">
         <outline text="Left / h: move left" color="#4ea8de"></outline>
@@ -18,7 +18,7 @@
       </outline>
       <outline text="3. Edit" color="#ffb454">
         <outline text="i / a: enter edit mode on selected box" color="#ffb454"></outline>
-        <outline text="Type to replace text" color="#ffb454"></outline>
+        <outline text="Type to edit; the cursor starts at the end" color="#ffb454"></outline>
         <outline text="Esc: commit and exit edit mode" color="#ffb454"></outline>
       </outline>
       <outline text="4. Build out the tree" color="#7ee787">
@@ -31,7 +31,7 @@
         <outline text="J: move node down among siblings" color="#b399ff"></outline>
       </outline>
       <outline text="6. Save" color="#ff6ac1">
-        <outline text="ctrl+s: write tree back to the OPML path" color="#ff6ac1"></outline>
+        <outline text="Changes are saved to the OPML file automatically" color="#ff6ac1"></outline>
         <outline text="Status line confirms save or shows the error" color="#ff6ac1"></outline>
       </outline>
       <outline text="Other" color="#4ea8de">

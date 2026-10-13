@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Plan a trip to Japan</title></head>
+  <body>
+    <outline text="Trip to Japan">
+      <outline text="Tokyo">
+        <outline text="Shibuya crossing"/>
+        <outline text="Tsukiji outer market"/>
+        <outline text="teamLab Planets"/>
+      </outline>
+      <outline text="Kyoto">
+        <outline text="Fushimi Inari at dawn"/>
+        <outline text="Arashiyama bamboo grove"/>
+      </outline>
+      <outline text="Food">
+        <outline text="Ramen crawl"/>
+        <outline text="Kaiseki dinner"/>
+        <outline text="Konbini breakfast"/>
+      </outline>
+      <outline text="Logistics">
+        <outline text="JR Pass?"/>
+        <outline text="Suica card"/>
+        <outline text="Pocket wifi"/>
+      </outline>
+      <outline text="Budget">
+        <outline text="Flights"/>
+        <outline text="Ryokan night"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

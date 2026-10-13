@@ -26,7 +26,13 @@ run:
 ## build: build all binaries
 .PHONY: build
 build: tidy
-	go build -o bin/hmm ./cmd/hmm
+	go build -o bin/hmm .
+
+## demo: re-record docs/demo/demo.gif and screenshot.png (needs vhs)
+.PHONY: demo
+demo:
+	go build -o bin/hmm .
+	vhs docs/demo/demo.tape
 
 ## ci: run all tests and build project
 .PHONY: ci
