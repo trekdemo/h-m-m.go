@@ -404,6 +404,14 @@ func (m model) markerAt(x, y int) *node {
 	return nil
 }
 
+// onScreen reports whether any part of r, in canvas coordinates, falls
+// inside the viewport, so drawing can skip building layers for things
+// that are entirely off screen.
+func (m model) onScreen(r navigator.Rect) bool {
+	sx, sy := r.X-m.offsetX, r.Y-m.offsetY
+	return sx+r.Width > 0 && sx < m.viewportW && sy+r.Height > 0 && sy < m.viewportH
+}
+
 // buildCanvas composites the connector edges, boxes and collapsed nodes'
 // markers currently visible in the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
 // drawn first, cell by cell, so box borders always render cleanly on top.
@@ -433,21 +441,20 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 
 	var layers []*lipgloss.Layer
 	for n := range m.root.All() {
-		sx, sy := n.x-m.offsetX, n.y-m.offsetY
-		if sx+n.Width() <= 0 || sx >= m.viewportW || sy+n.Height() <= 0 || sy >= m.viewportH {
-			continue // fully off screen
-		}
-		rendered := n.Render()
-		if n == m.selected {
-			rendered = n.RenderAsSelected()
-			if m.mode == editMode {
-				// The cursor lives in the edit buffer, not the box text.
-				rendered = n.selStyle.Render(m.editingDisplayText())
+		// The box and its marker are culled separately: a marker sits
+		// outside its box, so it can be on screen while the box isn't.
+		if m.onScreen(n.Bounds()) {
+			rendered := n.Render()
+			if n == m.selected {
+				rendered = n.RenderAsSelected()
+				if m.mode == editMode {
+					// The cursor lives in the edit buffer, not the box text.
+					rendered = n.selStyle.Render(m.editingDisplayText())
+				}
 			}
+			layers = append(layers, lipgloss.NewLayer(rendered).X(n.x-m.offsetX).Y(n.y-m.offsetY))
 		}
-		layers = append(layers, lipgloss.NewLayer(rendered).X(sx).Y(sy))
-		if n.collapsed {
-			mb := n.markerBounds()
+		if mb := n.markerBounds(); n.collapsed && m.onScreen(mb) {
 			marker := lipgloss.NewStyle().Foreground(n.color).Render(n.marker())
 			layers = append(layers, lipgloss.NewLayer(marker).X(mb.X-m.offsetX).Y(mb.Y-m.offsetY))
 		}

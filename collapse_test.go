@@ -319,3 +319,19 @@ func TestClickingMarkerExpandsAndSelects(t *testing.T) {
 		t.Fatalf("selected %q, want the expanded node", m.selected.text)
 	}
 }
+
+// TestMarkerIsDrawnWhenItsBoxIsOffScreen pans so a collapsed node's box
+// ends exactly at the left edge of the viewport, leaving only its marker
+// on screen.
+func TestMarkerIsDrawnWhenItsBoxIsOffScreen(t *testing.T) {
+	m := newCollapseModel(t)
+	branch := m.root.children[0]
+	m.setSelectedNode(branch)
+	m = pressSpace(m)
+
+	m.offsetX = branch.x + branch.Width()
+	m.offsetY = branch.y - 5
+	if out := m.View().Content; !strings.Contains(out, "+2") {
+		t.Fatalf("marker isn't drawn while its box is off screen:\n%s", out)
+	}
+}
