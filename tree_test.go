@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,14 @@ func TestBuildDemoSceneLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loading testdata/demo_tree.opml: %v", err)
 	}
-	_, boxes, edges, _ := buildScene(demoTree)
+	root := buildScene(demoTree)
+	nodes := slices.Collect(root.All())
+	var edges []edge
+	for _, n := range nodes {
+		for _, c := range n.children {
+			edges = append(edges, connector(n, c))
+		}
+	}
 
 	var countNodes func(spec storage.Node) int
 	countNodes = func(spec storage.Node) int {
@@ -28,23 +36,23 @@ func TestBuildDemoSceneLayout(t *testing.T) {
 	}
 	wantNodes := countNodes(demoTree)
 
-	if len(boxes) != wantNodes {
-		t.Fatalf("got %d boxes, want %d", len(boxes), wantNodes)
+	if len(nodes) != wantNodes {
+		t.Fatalf("got %d nodes, want %d", len(nodes), wantNodes)
 	}
 	if len(edges) != wantNodes-1 {
 		t.Fatalf("got %d edges, want %d (a tree has n-1 edges)", len(edges), wantNodes-1)
 	}
 
-	for i, a := range boxes {
+	for i, a := range nodes {
 		if a.Width() <= 0 || a.Height() <= 0 {
 			t.Fatalf("box %d has non-positive size %dx%d", i, a.Width(), a.Height())
 		}
-		for j, b := range boxes {
+		for j, b := range nodes {
 			if i == j {
 				continue
 			}
 			if rectsOverlap(a.x, a.y, a.Width(), a.Height(), b.x, b.y, b.Width(), b.Height()) {
-				t.Fatalf("boxes %d and %d overlap: %+v vs %+v", i, j, a, b)
+				t.Fatalf("boxes %d and %d overlap: %+v vs %+v", i, j, a.Bounds(), b.Bounds())
 			}
 		}
 	}
@@ -69,7 +77,7 @@ func TestLayoutIsBidirectional(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loading testdata/demo_tree.opml: %v", err)
 	}
-	root, _, _, _ := buildScene(demoTree)
+	root := buildScene(demoTree)
 
 	if root.x != 0 || root.y != 0 {
 		t.Fatalf("root at (%d, %d), want (0, 0)", root.x, root.y)

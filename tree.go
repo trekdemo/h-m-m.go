@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"iter"
 	"slices"
 
 	"hmm/navigator"
@@ -21,8 +22,26 @@ type node struct {
 	color    color.Color
 	parent   *node
 	children []*node
-	idx      int  // index into the flattened boxes/nodes slices
 	side     side // which side of the root this grows on; only set on the root's children
+}
+
+// All yields n and every node below it in preorder, so drawing, hit
+// testing and centering read the tree itself rather than a flattened copy
+// that would need re-syncing after every edit.
+func (n *node) All() iter.Seq[*node] {
+	return func(yield func(*node) bool) { n.walk(yield) }
+}
+
+func (n *node) walk(yield func(*node) bool) bool {
+	if !yield(n) {
+		return false
+	}
+	for _, c := range n.children {
+		if !c.walk(yield) {
+			return false
+		}
+	}
+	return true
 }
 
 func (n *node) Parent() navigator.NavNode {
@@ -193,7 +212,10 @@ func removeNode(n *node) *node {
 // sprawling to one side. It pins the root at the origin, so editing never
 // makes it jump, splits the root's branches between the sides (see
 // splitSides), and lays out each side as its own tidy tree (see
-// layoutSide).
+// layoutSide). Callers re-run it over the whole tree after every edit,
+// because one box changing size or a node being added can shift every
+// other box; a full pass is cheap at mindmap sizes and far simpler than
+// patching positions.
 func layoutTree(root *node) {
 	root.x, root.y = 0, 0
 	right, left := splitSides(root.children)
@@ -307,20 +329,6 @@ func layoutSide(root *node, children []*node, dir side) {
 	}
 }
 
-// flattenTree produces the flat slices the renderer and the model work
-// with. A single preorder walk fills boxes and nodes in lockstep and
-// stores each node's position as its idx, so a node, its box, and the
-// selection index always agree.
-func flattenTree(n *node, boxes *[]textBox, edges *[]edge, nodes *[]*node) {
-	n.idx = len(*boxes)
-	*boxes = append(*boxes, n.textBox)
-	*nodes = append(*nodes, n)
-	for _, c := range n.children {
-		*edges = append(*edges, connector(n, c))
-		flattenTree(c, boxes, edges, nodes)
-	}
-}
-
 // connector joins the facing middles of a parent and child box. Because
 // edgeCells assumes edges run left to right, a child on the left side
 // starts the edge at the child, mirroring the right side's edge cell for
@@ -342,25 +350,12 @@ func connector(p, c *node) edge {
 	}
 }
 
-// buildScene is the one-call setup for a freshly loaded spec: build, lay
-// out, flatten. It also returns the root so later edits can relayout the
-// same tree instead of rebuilding it.
-func buildScene(spec storage.Node) (root *node, boxes []textBox, edges []edge, nodes []*node) {
-	root = buildTree(spec)
-	boxes, edges, nodes = relayout(root)
-	return root, boxes, edges, nodes
-}
-
-// relayout recomputes everything from scratch after any edit, because a
-// single box changing size or a node being added can shift every other
-// box; a full pass is cheap at mindmap sizes and far simpler than patching
-// positions. If the edit didn't change the tree's shape (e.g. a text edit),
-// idx values stay the same because the preorder walk visits nodes in the
-// same order; otherwise callers should re-select by node.
-func relayout(root *node) (boxes []textBox, edges []edge, nodes []*node) {
+// buildScene is the one-call setup for a freshly loaded spec: build the
+// tree and lay it out, so it's ready to draw.
+func buildScene(spec storage.Node) *node {
+	root := buildTree(spec)
 	layoutTree(root)
-	flattenTree(root, &boxes, &edges, &nodes)
-	return boxes, edges, nodes
+	return root
 }
 
 // point is a canvas coordinate, used as a map key to accumulate the

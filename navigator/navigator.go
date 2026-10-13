@@ -17,6 +17,11 @@ func (r Rect) Center() (float64, float64) {
 	return float64(r.X) + float64(r.Width)/2, float64(r.Y) + float64(r.Height)/2
 }
 
+// Contains reports whether the cell (x, y) lies inside the rectangle.
+func (r Rect) Contains(x, y int) bool {
+	return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height
+}
+
 // NavNode is anything that can be navigated between: it knows its own screen
 // position and, for tree-based navigation, its place in a tree.
 type NavNode interface {

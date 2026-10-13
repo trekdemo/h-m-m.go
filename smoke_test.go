@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"slices"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -38,8 +40,9 @@ func TestModelSmoke(t *testing.T) {
 		t.Fatalf("expected non-empty view")
 	}
 
-	for i, a := range m.boxes {
-		for j, b := range m.boxes {
+	nodes := slices.Collect(m.root.All())
+	for i, a := range nodes {
+		for j, b := range nodes {
 			if i == j {
 				continue
 			}
@@ -47,5 +50,28 @@ func TestModelSmoke(t *testing.T) {
 				t.Fatalf("boxes %d and %d overlap", i, j)
 			}
 		}
+	}
+}
+
+func TestDeleteSelectsPreviousSiblingOrParent(t *testing.T) {
+	m := newModel(storage.Node{Text: "root", Children: []storage.Node{
+		{Text: "a"}, {Text: "b"},
+	}}, filepath.Join(t.TempDir(), "tree.opml"))
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = mm.(model)
+	a, b := m.root.children[0], m.root.children[1]
+
+	m.setSelectedNode(b)
+	m.removeCurrentNode()
+	if m.selected != a {
+		t.Fatalf("after deleting b, selected %q, want its previous sibling a", m.selected.text)
+	}
+	m.removeCurrentNode()
+	if m.selected != m.root {
+		t.Fatalf("after deleting a first child, selected %q, want the parent", m.selected.text)
+	}
+	m.removeCurrentNode()
+	if m.selected != m.root || len(m.root.children) != 0 {
+		t.Fatal("deleting the root should be refused")
 	}
 }

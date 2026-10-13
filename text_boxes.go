@@ -1,6 +1,8 @@
 package main
 
 import (
+	"iter"
+
 	"hmm/navigator"
 
 	lipgloss "charm.land/lipgloss/v2"
@@ -37,20 +39,22 @@ func (b textBox) Bounds() navigator.Rect {
 }
 
 // BoxesCentroid returns the center point of the bounding box that encloses
-// all boxes, so the initial viewport can be aimed at where the tree
+// all nodes' boxes, so the initial viewport can be aimed at where the tree
 // actually is.
-func BoxesCentroid(boxes []textBox) (int, int) {
-	if len(boxes) == 0 {
-		return 0, 0
-	}
-
-	minX, minY := boxes[0].x, boxes[0].y
-	maxX, maxY := boxes[0].x+boxes[0].Width(), boxes[0].y+boxes[0].Height()
-	for _, b := range boxes[1:] {
-		minX = min(minX, b.x)
-		minY = min(minY, b.y)
-		maxX = max(maxX, b.x+b.Width())
-		maxY = max(maxY, b.y+b.Height())
+func BoxesCentroid(nodes iter.Seq[*node]) (int, int) {
+	first := true
+	var minX, minY, maxX, maxY int
+	for n := range nodes {
+		r := n.Bounds()
+		if first {
+			minX, minY, maxX, maxY = r.X, r.Y, r.X+r.Width, r.Y+r.Height
+			first = false
+			continue
+		}
+		minX = min(minX, r.X)
+		minY = min(minY, r.Y)
+		maxX = max(maxX, r.X+r.Width)
+		maxY = max(maxY, r.Y+r.Height)
 	}
 	return (minX + maxX) / 2, (minY + maxY) / 2
 }

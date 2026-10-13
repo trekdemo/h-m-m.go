@@ -5,6 +5,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
@@ -38,10 +39,7 @@ type model struct {
 	viewportW, viewportH int // canvas area, i.e. the window minus the help view
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	root                 *node
-	boxes                []textBox
-	edges                []edge
-	nodes                []*node
-	selected             int // index into boxes/nodes of the selected node
+	selected             *node // never nil: the tree always has its root
 	nav                  navigator.Navigator
 
 	savePath  string // OPML file that writeToFile writes the tree back to
@@ -74,13 +72,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.EnterEdit):
 			m.enterEditMode()
 		case key.Matches(msg, normalModeKeys.AddSibling):
-			if n := m.addSibling(); n != nil {
-				m.enterEditMode()
-			}
+			m.addSibling()
+			m.enterEditMode()
 		case key.Matches(msg, normalModeKeys.AddChild):
-			if n := m.addChild(); n != nil {
-				m.enterEditMode()
-			}
+			m.addChild()
+			m.enterEditMode()
 		case key.Matches(msg, normalModeKeys.Left):
 			m.move(m.nav.LeftOf)
 		case key.Matches(msg, normalModeKeys.Right):
@@ -90,7 +86,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.Down):
 			m.move(m.nav.Below)
 		case key.Matches(msg, normalModeKeys.Delete):
-			if n := m.currentNode(); n != nil && n != m.root {
+			if m.selected != m.root {
 				m.removeCurrentNode()
 				m.writeToFile()
 				return m, nil
@@ -179,7 +175,7 @@ func (m *model) updateViewportSize() {
 }
 
 func (m *model) centerOnTree() {
-	cx, cy := BoxesCentroid(m.boxes)
+	cx, cy := BoxesCentroid(m.root.All())
 	m.offsetX = cx - m.viewportW/2
 	m.offsetY = cy - m.viewportH/2
 }
@@ -198,19 +194,13 @@ func (m *model) writeToFile() {
 // lookups) finds from the current one, leaving the selection alone when
 // there's nothing in that direction.
 func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
-	if n := m.currentNode(); n != nil {
-		if target := query(n); target != nil {
-			m.setSelectedNode(target.(*node))
-		}
+	if target := query(m.selected); target != nil {
+		m.setSelectedNode(target.(*node))
 	}
 }
 
 func (m *model) setSelectedNode(n *node) {
-	if n == nil {
-		return
-	}
-
-	m.selected = n.idx
+	m.selected = n
 
 	// Shift the viewport by the minimum amount needed so the selected box is
 	// fully visible, so keyboard navigation never selects a node the user can't
@@ -236,67 +226,51 @@ func scrollToShow(offset, view, pos, size int) int {
 // switches to editMode, so subsequent key presses edit that buffer instead
 // of driving navigation.
 func (m *model) enterEditMode() {
-	n := m.currentNode()
-	if n == nil {
-		return
-	}
+	n := m.selected
 	m.mode = editMode
 	m.editText = []rune(n.text)
 	m.editCurs = len(m.editText)
 }
 
 // addSibling inserts a new, empty-text sibling right after the selected
-// node (or a child, when the root is selected) and re-lays-out the tree,
-// returning the new node.
-func (m *model) addSibling() *node {
-	n := m.currentNode()
-	if n == nil {
-		return nil
-	}
-	sib := addSiblingAfter(n)
-
-	m.boxes, m.edges, m.nodes = relayout(m.root)
+// node (or a child, when the root is selected), re-lays-out the tree and
+// selects the new node.
+func (m *model) addSibling() {
+	sib := addSiblingAfter(m.selected)
+	layoutTree(m.root)
 	m.setSelectedNode(sib)
-	return sib
 }
 
-// addChild appends a new, empty-text child to the selected node and
-// re-lays-out the tree, returning the new node.
-func (m *model) addChild() *node {
-	n := m.currentNode()
-	if n == nil {
-		return nil
-	}
-	child := addChild(n)
-
-	m.boxes, m.edges, m.nodes = relayout(m.root)
+// addChild appends a new, empty-text child to the selected node,
+// re-lays-out the tree and selects the new node.
+func (m *model) addChild() {
+	child := addChild(m.selected)
+	layoutTree(m.root)
 	m.setSelectedNode(child)
-
-	return child
 }
 
+// moveSibling re-selects the moved node after the relayout so the viewport
+// follows it to its new position.
 func (m *model) moveSibling(dir int) {
-	if n := m.currentNode(); n != nil && moveSibling(n, dir) {
-		m.boxes, m.edges, m.nodes = relayout(m.root)
-		m.setSelectedNode(n)
+	if moveSibling(m.selected, dir) {
+		layoutTree(m.root)
+		m.setSelectedNode(m.selected)
 	}
 }
 
+// removeCurrentNode deletes the selected node and selects its previous
+// sibling, or its parent if it has none. The tree is re-laid-out before
+// selecting, so the viewport scrolls to where the target ends up rather
+// than where it was.
 func (m *model) removeCurrentNode() {
-	n := m.currentNode()
-	if n == nil || n.parent == nil {
+	n := m.selected
+	if n.parent == nil {
 		return
 	}
-
-	target := prevSibling(n)
-	if target == nil {
-		target = n.parent
-	}
-	m.setSelectedNode(target)
-
+	target := cmp.Or(prevSibling(n), n.parent)
 	removeNode(n)
-
-	m.boxes, m.edges, m.nodes = relayout(m.root)
+	layoutTree(m.root)
+	m.setSelectedNode(target)
 }
 
 // removeIfEmpty deletes the selected node from the tree if its text is
@@ -304,11 +278,7 @@ func (m *model) removeCurrentNode() {
 // parent if it has none. It leaves the tree untouched if the node still has
 // text or is the root (which has no parent to fall back to).
 func (m *model) removeIfEmpty() {
-	n := m.currentNode()
-	if n == nil {
-		return
-	}
-	if n.text == "" {
+	if m.selected.text == "" {
 		m.removeCurrentNode()
 	}
 }
@@ -319,13 +289,9 @@ func (m *model) removeIfEmpty() {
 // require every other box to shift. Called after every buffer mutation so
 // the layout redraws live as the user types, not just once on commit.
 func (m *model) applyEdit() {
-	n := m.currentNode()
-	if n == nil {
-		return
-	}
-	n.setText(string(m.editText))
-	m.boxes, m.edges, m.nodes = relayout(m.root)
-	m.setSelectedNode(m.nodes[m.selected])
+	m.selected.setText(string(m.editText))
+	layoutTree(m.root)
+	m.setSelectedNode(m.selected)
 }
 
 // updateEditMode handles a key press while in editMode: Esc returns to
@@ -388,20 +354,13 @@ func (m model) editingDisplayText() string {
 	return string(m.editText[:m.editCurs]) + "▏" + string(m.editText[m.editCurs:])
 }
 
-func (m model) currentNode() *node {
-	if m.selected < 0 || m.selected >= len(m.nodes) {
-		return nil
-	}
-	return m.nodes[m.selected]
-}
-
-// nodeAt returns the index of the box at viewport coordinates (x, y), or -1
-// if no box covers that point.
+// nodeAt returns the node whose box covers viewport coordinates (x, y),
+// or nil if no box does.
 func (m model) nodeAt(x, y int) *node {
 	x, y = x+m.offsetX, y+m.offsetY
-	for i, b := range m.boxes {
-		if x >= b.x && x < b.x+b.Width() && y >= b.y && y < b.y+b.Height() {
-			return m.nodes[i]
+	for n := range m.root.All() {
+		if n.Bounds().Contains(x, y) {
+			return n
 		}
 	}
 	return nil
@@ -419,9 +378,11 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	// needs a junction character like ┤ rather than whichever single
 	// edge's rune happened to be drawn last.
 	dirs := map[point]direction{}
-	for _, e := range m.edges {
-		for _, c := range edgeCells(e) {
-			dirs[point{c.x, c.y}] |= c.dir
+	for n := range m.root.All() {
+		for _, child := range n.children {
+			for _, c := range edgeCells(connector(n, child)) {
+				dirs[point{c.x, c.y}] |= c.dir
+			}
 		}
 	}
 	for p, d := range dirs {
@@ -433,17 +394,17 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	}
 
 	var layers []*lipgloss.Layer
-	for i, b := range m.boxes {
-		sx, sy := b.x-m.offsetX, b.y-m.offsetY
-		if sx+b.Width() <= 0 || sx >= m.viewportW || sy+b.Height() <= 0 || sy >= m.viewportH {
+	for n := range m.root.All() {
+		sx, sy := n.x-m.offsetX, n.y-m.offsetY
+		if sx+n.Width() <= 0 || sx >= m.viewportW || sy+n.Height() <= 0 || sy >= m.viewportH {
 			continue // fully off screen
 		}
-		rendered := b.Render()
-		if i == m.selected {
-			rendered = b.RenderAsSelected()
+		rendered := n.Render()
+		if n == m.selected {
+			rendered = n.RenderAsSelected()
 			if m.mode == editMode {
 				// The cursor lives in the edit buffer, not the box text.
-				rendered = b.selStyle.Render(m.editingDisplayText())
+				rendered = n.selStyle.Render(m.editingDisplayText())
 			}
 		}
 		layers = append(layers, lipgloss.NewLayer(rendered).X(sx).Y(sy))
@@ -454,9 +415,10 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 }
 
 func newModel(spec storage.Node, savePath string) model {
-	root, boxes, edges, nodes := buildScene(spec)
+	root := buildScene(spec)
 	return model{
-		root: root, boxes: boxes, edges: edges, nodes: nodes, selected: 0,
+		root:     root,
+		selected: root,
 		nav:      navigator.SpatialNavigator{},
 		help:     help.New(),
 		savePath: savePath,
