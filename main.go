@@ -42,6 +42,7 @@ type model struct {
 	edges                []edge
 	nodes                []*node
 	selected             int // index into boxes/nodes of the selected node
+	nav                  navigator.Navigator
 
 	savePath  string // OPML file that writeToFile writes the tree back to
 	statusMsg string // last save result, shown below the canvas until overwritten
@@ -67,8 +68,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		nav := navigator.SpatialNavigator{Nodes: navNodes(m.nodes)}
-
 		switch {
 		case key.Matches(msg, normalModeKeys.Quit):
 			return m, tea.Quit
@@ -83,13 +82,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.enterEditMode()
 			}
 		case key.Matches(msg, normalModeKeys.Left):
-			m.move(nav.LeftOf)
+			m.move(m.nav.LeftOf)
 		case key.Matches(msg, normalModeKeys.Right):
-			m.move(nav.RightOf)
+			m.move(m.nav.RightOf)
 		case key.Matches(msg, normalModeKeys.Up):
-			m.move(nav.Above)
+			m.move(m.nav.Above)
 		case key.Matches(msg, normalModeKeys.Down):
-			m.move(nav.Below)
+			m.move(m.nav.Below)
 		case key.Matches(msg, normalModeKeys.Delete):
 			if n := m.currentNode(); n != nil && n != m.root {
 				m.removeCurrentNode()
@@ -458,6 +457,7 @@ func newModel(spec storage.Node, savePath string) model {
 	root, boxes, edges, nodes := buildScene(spec)
 	return model{
 		root: root, boxes: boxes, edges: edges, nodes: nodes, selected: 0,
+		nav:      navigator.SpatialNavigator{},
 		help:     help.New(),
 		savePath: savePath,
 	}

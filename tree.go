@@ -62,17 +62,6 @@ func (n *node) OutlineChildren() []storage.Outline {
 	return out
 }
 
-// navNodes exists because navigators take their nodes as interfaces, and
-// Go can't reinterpret the model's []*node as []navigator.NavNode, so it
-// copies element by element.
-func navNodes(nodes []*node) []navigator.NavNode {
-	out := make([]navigator.NavNode, len(nodes))
-	for i, n := range nodes {
-		out[i] = n
-	}
-	return out
-}
-
 // newNode is shared by the initial build and by edits that insert nodes
 // later, so both produce identically styled boxes. It derives the selected
 // style up front so drawing the selection never rebuilds styles. Position

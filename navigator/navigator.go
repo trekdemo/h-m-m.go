@@ -4,6 +4,8 @@
 // strategies without changing how they're invoked.
 package navigator
 
+import "iter"
+
 // Rect is an axis-aligned box in canvas coordinates.
 type Rect struct {
 	X, Y, Width, Height int
@@ -33,4 +35,26 @@ type Navigator interface {
 	RightOf(n NavNode) NavNode
 	Above(n NavNode) NavNode
 	Below(n NavNode) NavNode
+}
+
+// treeOf yields every node in the tree n belongs to, in preorder from the
+// root, so navigators can find candidates from n alone instead of being
+// handed a copy of the node set that goes stale after every edit.
+func treeOf(n NavNode) iter.Seq[NavNode] {
+	for n.Parent() != nil {
+		n = n.Parent()
+	}
+	return func(yield func(NavNode) bool) { walk(n, yield) }
+}
+
+func walk(n NavNode, yield func(NavNode) bool) bool {
+	if !yield(n) {
+		return false
+	}
+	for _, c := range n.Children() {
+		if !walk(c, yield) {
+			return false
+		}
+	}
+	return true
 }

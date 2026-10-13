@@ -8,10 +8,9 @@ import (
 // SpatialNavigator implements Navigator using box geometry: each direction is a
 // unit vector, and the nearest node within a 45-degree cone around that
 // vector wins, so "right" only ever finds boxes that actually read as
-// being to the right, not merely at a smaller x.
-type SpatialNavigator struct {
-	Nodes []NavNode
-}
+// being to the right, not merely at a smaller x. Candidates are the nodes
+// of the tree the starting node belongs to.
+type SpatialNavigator struct{}
 
 // nearest finds the closest node in direction (dirX, dirY) from n, measured
 // edge to edge rather than center to center, so wide and narrow boxes next to
@@ -34,7 +33,7 @@ func (s SpatialNavigator) nearest(n NavNode, dirX, dirY float64) NavNode {
 
 	var best, bestRelative NavNode
 	bestScore, bestRelativeScore := math.Inf(1), math.Inf(1)
-	for _, c := range s.Nodes {
+	for c := range treeOf(n) {
 		if c == n {
 			continue
 		}

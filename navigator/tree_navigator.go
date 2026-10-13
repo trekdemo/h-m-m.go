@@ -4,9 +4,7 @@ package navigator
 // (parent or first child, whichever lies in that direction, since a
 // bidirectional layout grows some subtrees leftwards) and box position for
 // up/down.
-type TreeNavigator struct {
-	Nodes []NavNode
-}
+type TreeNavigator struct{}
 
 func (t TreeNavigator) LeftOf(n NavNode) NavNode {
 	return towards(n, -1)
@@ -40,7 +38,7 @@ func (t TreeNavigator) Above(n NavNode) NavNode {
 	nb := n.Bounds()
 	var best NavNode
 	var bestY int
-	for _, c := range t.Nodes {
+	for c := range treeOf(n) {
 		if c == n {
 			continue
 		}
@@ -59,7 +57,7 @@ func (t TreeNavigator) Below(n NavNode) NavNode {
 	nb := n.Bounds()
 	var best NavNode
 	var bestY int
-	for _, c := range t.Nodes {
+	for c := range treeOf(n) {
 		if c == n {
 			continue
 		}

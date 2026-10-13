@@ -12,6 +12,19 @@ func (t *testNode) Bounds() Rect        { return t.r }
 func (t *testNode) Parent() NavNode     { return t.parent }
 func (t *testNode) Children() []NavNode { return t.children }
 
+// forest hangs nodes that have no parent yet under a shared root, since
+// navigators find candidates by walking the tree. The root's box spans
+// every column, so horizontal moves skip it as overlapping, and sits so
+// far up that any real node beats it vertically.
+func forest(nodes ...*testNode) {
+	root := &testNode{r: Rect{X: -1 << 20, Y: -1 << 20, Width: 1 << 21, Height: 1}}
+	for _, n := range nodes {
+		if n.parent == nil {
+			adopt(root, n)
+		}
+	}
+}
+
 // adopt links child under parent.
 func adopt(parent, child *testNode) {
 	child.parent = parent
@@ -25,7 +38,8 @@ func TestSpatialNavigatorVariableWidthColumn(t *testing.T) {
 	long := &testNode{r: Rect{X: 10, Y: 2, Width: 40, Height: 1}}
 	short2 := &testNode{r: Rect{X: 10, Y: 4, Width: 6, Height: 1}}
 	far := &testNode{r: Rect{X: 45, Y: 8, Width: 10, Height: 1}}
-	nav := SpatialNavigator{Nodes: []NavNode{short, long, short2, far}}
+	forest(short, long, short2, far)
+	nav := SpatialNavigator{}
 
 	if got := nav.Below(short); got != long {
 		t.Errorf("Below(short) = %+v, want long", got)
@@ -45,7 +59,8 @@ func TestSpatialNavigatorPrefersStraightAhead(t *testing.T) {
 	cur := &testNode{r: Rect{X: 0, Y: 5, Width: 10, Height: 1}}
 	ahead := &testNode{r: Rect{X: 20, Y: 5, Width: 10, Height: 1}}
 	diagonal := &testNode{r: Rect{X: 16, Y: 9, Width: 10, Height: 1}}
-	nav := SpatialNavigator{Nodes: []NavNode{cur, ahead, diagonal}}
+	forest(cur, ahead, diagonal)
+	nav := SpatialNavigator{}
 
 	if got := nav.RightOf(cur); got != ahead {
 		t.Errorf("RightOf(cur) = %+v, want ahead", got)
@@ -62,7 +77,8 @@ func TestSpatialNavigatorHorizontalSkipsXOverlap(t *testing.T) {
 	cousin := &testNode{r: Rect{X: 0, Y: 2, Width: 30, Height: 1}}
 	child := &testNode{r: Rect{X: 34, Y: 0, Width: 8, Height: 1}}
 	adopt(cur, child)
-	nav := SpatialNavigator{Nodes: []NavNode{cur, cousin, child}}
+	forest(cur, cousin, child)
+	nav := SpatialNavigator{}
 
 	if got := nav.RightOf(cur); got != child {
 		t.Errorf("RightOf(cur) = %+v, want child", got)
@@ -79,7 +95,8 @@ func TestSpatialNavigatorHorizontalPrefersParentOutsideCone(t *testing.T) {
 	cousin := &testNode{r: Rect{X: 0, Y: 20, Width: 8, Height: 1}}
 	child := &testNode{r: Rect{X: 12, Y: 20, Width: 8, Height: 1}}
 	adopt(parent, child)
-	nav := SpatialNavigator{Nodes: []NavNode{parent, cousin, child}}
+	forest(parent, cousin, child)
+	nav := SpatialNavigator{}
 
 	if got := nav.LeftOf(child); got != parent {
 		t.Errorf("LeftOf(child) = %+v, want parent", got)

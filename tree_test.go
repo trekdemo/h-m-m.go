@@ -178,12 +178,8 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 		{Text: "right", Children: []storage.Node{{Text: "right child"}}},
 		{Text: "left", Children: []storage.Node{{Text: "left child"}}},
 	}})
-	var boxes []textBox
-	var edges []edge
-	var nodes []*node
 	layoutTree(root)
-	flattenTree(root, &boxes, &edges, &nodes)
-	nav := navigator.TreeNavigator{Nodes: navNodes(nodes)}
+	nav := navigator.TreeNavigator{}
 	right, left := root.children[0], root.children[1]
 
 	cases := []struct {
