@@ -3,42 +3,45 @@ package main
 import "charm.land/bubbles/v2/key"
 
 // keyMap defines the keybindings used in normalMode: quitting, entering
-// editMode, adding and deleting nodes, navigating, reordering siblings and
-// toggling help. editMode has its own editModeKeyMap.
+// editMode, adding and deleting nodes, navigating, reordering siblings,
+// collapsing and expanding nodes, and toggling help. editMode has its own
+// editModeKeyMap.
 type keyMap struct {
-	Quit        key.Binding
-	EnterEdit   key.Binding
-	AddSibling  key.Binding
-	AddChild    key.Binding
-	Left        key.Binding
-	Right       key.Binding
-	Up          key.Binding
-	Down        key.Binding
-	Delete      key.Binding
-	MoveSibUp   key.Binding
-	MoveSibDown key.Binding
-	ToggleHelp  key.Binding
+	Quit           key.Binding
+	EnterEdit      key.Binding
+	AddSibling     key.Binding
+	AddChild       key.Binding
+	Left           key.Binding
+	Right          key.Binding
+	Up             key.Binding
+	Down           key.Binding
+	Delete         key.Binding
+	MoveSibUp      key.Binding
+	MoveSibDown    key.Binding
+	ToggleCollapse key.Binding
+	ToggleHelp     key.Binding
 }
 
 var normalModeKeys = keyMap{
-	Quit:        key.NewBinding(key.WithKeys("ctrl+c", "q", "esc"), key.WithHelp("q", "quit")),
-	EnterEdit:   key.NewBinding(key.WithKeys("i", "a"), key.WithHelp("i/a", "edit")),
-	AddSibling:  key.NewBinding(key.WithKeys("o", "enter"), key.WithHelp("o/enter", "add sibling")),
-	AddChild:    key.NewBinding(key.WithKeys("O", "tab"), key.WithHelp("O/tab", "add child")),
-	Left:        key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
-	Right:       key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
-	Up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-	Down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-	Delete:      key.NewBinding(key.WithKeys("backspace", "d"), key.WithHelp("d/backspace", "delete")),
-	MoveSibUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move up among siblings")),
-	MoveSibDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "move down among siblings")),
-	ToggleHelp:  key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
+	Quit:           key.NewBinding(key.WithKeys("ctrl+c", "q", "esc"), key.WithHelp("q", "quit")),
+	EnterEdit:      key.NewBinding(key.WithKeys("i", "a"), key.WithHelp("i/a", "edit")),
+	AddSibling:     key.NewBinding(key.WithKeys("o", "enter"), key.WithHelp("o/enter", "add sibling")),
+	AddChild:       key.NewBinding(key.WithKeys("O", "tab"), key.WithHelp("O/tab", "add child")),
+	Left:           key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "left")),
+	Right:          key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "right")),
+	Up:             key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+	Down:           key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	Delete:         key.NewBinding(key.WithKeys("backspace", "d"), key.WithHelp("d/backspace", "delete")),
+	MoveSibUp:      key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move up among siblings")),
+	MoveSibDown:    key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "move down among siblings")),
+	ToggleCollapse: key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "collapse/expand")),
+	ToggleHelp:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
 }
 
 // ShortHelp returns the bindings shown in the collapsed, single-line help
 // view.
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.EnterEdit, k.AddSibling, k.AddChild, k.Delete, k.Quit, k.ToggleHelp}
+	return []key.Binding{k.Up, k.Down, k.Left, k.Right, k.EnterEdit, k.AddSibling, k.AddChild, k.Delete, k.ToggleCollapse, k.Quit, k.ToggleHelp}
 }
 
 // FullHelp returns the bindings shown in the expanded, multi-column help
@@ -48,6 +51,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.EnterEdit, k.AddSibling, k.AddChild, k.Delete},
 		{k.MoveSibUp, k.MoveSibDown},
+		{k.ToggleCollapse},
 		{k.Quit, k.ToggleHelp},
 	}
 }

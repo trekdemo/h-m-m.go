@@ -99,6 +99,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveSibling(1)
 			m.writeToFile()
 			return m, nil
+		case key.Matches(msg, normalModeKeys.ToggleCollapse):
+			m.toggleCollapsed()
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
@@ -110,7 +112,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		if msg.Button == tea.MouseLeft {
-			if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
+			if hit := m.markerAt(msg.X, msg.Y); hit != nil {
+				hit.collapsed = false
+				layoutTree(m.root)
+				m.setSelectedNode(hit)
+			} else if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
 				m.setSelectedNode(hit)
 			}
 			m.dragging = true
@@ -199,7 +205,13 @@ func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
 	}
 }
 
+// setSelectedNode selects n and scrolls it into view, first revealing it
+// if it's hidden, so no caller (such as adding a child to a collapsed node)
+// can leave the selection on a box that isn't drawn.
 func (m *model) setSelectedNode(n *node) {
+	if reveal(n) {
+		layoutTree(m.root)
+	}
 	m.selected = n
 
 	// Shift the viewport by the minimum amount needed so the selected box is
@@ -258,6 +270,19 @@ func (m *model) moveSibling(dir int) {
 	}
 }
 
+// toggleCollapsed collapses or expands the selected node. It doesn't
+// save: collapsed state is view state, so toggling it isn't an edit.
+func (m *model) toggleCollapsed() {
+	n := m.selected
+	if !n.canCollapse() {
+		return
+	}
+	n.collapsed = !n.collapsed
+	layoutTree(m.root)
+	// The relayout can move n, so re-select it to scroll it back on screen.
+	m.setSelectedNode(n)
+}
+
 // removeCurrentNode deletes the selected node and selects its previous
 // sibling, or its parent if it has none. The tree is re-laid-out before
 // selecting, so the viewport scrolls to where the target ends up rather
@@ -273,12 +298,13 @@ func (m *model) removeCurrentNode() {
 	m.setSelectedNode(target)
 }
 
-// removeIfEmpty deletes the selected node from the tree if its text is
-// empty, re-laying-out the tree and selecting its previous sibling, or its
-// parent if it has none. It leaves the tree untouched if the node still has
-// text or is the root (which has no parent to fall back to).
+// removeIfEmpty cleans up the empty leaf left behind when the user adds a
+// node and leaves edit mode without typing. Only leaves are removed: a
+// node with children merely had its text cleared, and taking its subtree
+// with it would silently delete nodes the user never touched. The root is
+// never removed either (see removeCurrentNode).
 func (m *model) removeIfEmpty() {
-	if m.selected.text == "" {
+	if m.selected.text == "" && len(m.selected.children) == 0 {
 		m.removeCurrentNode()
 	}
 }
@@ -366,8 +392,28 @@ func (m model) nodeAt(x, y int) *node {
 	return nil
 }
 
-// buildCanvas composites the connector edges and boxes currently visible in
-// the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
+// markerAt returns the collapsed node whose marker covers viewport
+// coordinates (x, y), or nil if no marker does.
+func (m model) markerAt(x, y int) *node {
+	x, y = x+m.offsetX, y+m.offsetY
+	for n := range m.root.All() {
+		if n.collapsed && n.markerBounds().Contains(x, y) {
+			return n
+		}
+	}
+	return nil
+}
+
+// onScreen reports whether any part of r, in canvas coordinates, falls
+// inside the viewport, so drawing can skip building layers for things
+// that are entirely off screen.
+func (m model) onScreen(r navigator.Rect) bool {
+	sx, sy := r.X-m.offsetX, r.Y-m.offsetY
+	return sx+r.Width > 0 && sx < m.viewportW && sy+r.Height > 0 && sy < m.viewportH
+}
+
+// buildCanvas composites the connector edges, boxes and collapsed nodes'
+// markers currently visible in the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
 // drawn first, cell by cell, so box borders always render cleanly on top.
 func (m model) buildCanvas() *lipgloss.Canvas {
 	canvas := lipgloss.NewCanvas(m.viewportW, m.viewportH)
@@ -379,7 +425,7 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	// edge's rune happened to be drawn last.
 	dirs := map[point]direction{}
 	for n := range m.root.All() {
-		for _, child := range n.children {
+		for _, child := range n.visibleChildren() {
 			for _, c := range edgeCells(connector(n, child)) {
 				dirs[point{c.x, c.y}] |= c.dir
 			}
@@ -395,19 +441,23 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 
 	var layers []*lipgloss.Layer
 	for n := range m.root.All() {
-		sx, sy := n.x-m.offsetX, n.y-m.offsetY
-		if sx+n.Width() <= 0 || sx >= m.viewportW || sy+n.Height() <= 0 || sy >= m.viewportH {
-			continue // fully off screen
-		}
-		rendered := n.Render()
-		if n == m.selected {
-			rendered = n.RenderAsSelected()
-			if m.mode == editMode {
-				// The cursor lives in the edit buffer, not the box text.
-				rendered = n.selStyle.Render(m.editingDisplayText())
+		// The box and its marker are culled separately: a marker sits
+		// outside its box, so it can be on screen while the box isn't.
+		if m.onScreen(n.Bounds()) {
+			rendered := n.Render()
+			if n == m.selected {
+				rendered = n.RenderAsSelected()
+				if m.mode == editMode {
+					// The cursor lives in the edit buffer, not the box text.
+					rendered = n.selStyle.Render(m.editingDisplayText())
+				}
 			}
+			layers = append(layers, lipgloss.NewLayer(rendered).X(n.x-m.offsetX).Y(n.y-m.offsetY))
 		}
-		layers = append(layers, lipgloss.NewLayer(rendered).X(sx).Y(sy))
+		if mb := n.markerBounds(); n.collapsed && m.onScreen(mb) {
+			marker := lipgloss.NewStyle().Foreground(n.color).Render(n.marker())
+			layers = append(layers, lipgloss.NewLayer(marker).X(mb.X-m.offsetX).Y(mb.Y-m.offsetY))
+		}
 	}
 	canvas.Compose(lipgloss.NewCompositor(layers...))
 

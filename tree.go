@@ -1,9 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"iter"
 	"slices"
+
+	lipgloss "charm.land/lipgloss/v2"
 
 	"hmm/navigator"
 	"hmm/storage"
@@ -23,11 +26,90 @@ type node struct {
 	parent   *node
 	children []*node
 	side     side // which side of the root this grows on; only set on the root's children
+
+	// collapsed hides the node's descendants from layout, drawing and
+	// navigation.
+	// It's view state, so it isn't saved, and it's kept on hidden nodes so
+	// a nested collapse survives its ancestor being collapsed and expanded.
+	collapsed bool
 }
 
-// All yields n and every node below it in preorder, so drawing, hit
-// testing and centering read the tree itself rather than a flattened copy
-// that would need re-syncing after every edit.
+// visibleChildren is what everything on screen sees of n's children:
+// none while n is collapsed. Edits and saving use children directly,
+// because hidden nodes are still part of the map.
+func (n *node) visibleChildren() []*node {
+	if n.collapsed {
+		return nil
+	}
+	return n.children
+}
+
+// canCollapse is false for leaves, which have nothing to hide, and for the
+// root, which would hide the whole map.
+func (n *node) canCollapse() bool {
+	return n.parent != nil && len(n.children) > 0
+}
+
+// marker is the stub and count drawn beside a collapsed node, so it
+// doesn't pass for a leaf: "─ +5" on the side its children would grow on,
+// mirrored to "+5 ─" on the left. The count includes every hidden node,
+// not just direct children, to show how much is tucked away. Expanded
+// nodes have no marker.
+func (n *node) marker() string {
+	if !n.collapsed {
+		return ""
+	}
+	count := fmt.Sprintf("+%d", n.descendantCount())
+	if n.growsLeft() {
+		return count + " ─"
+	}
+	return "─ " + count
+}
+
+// markerBounds is where marker is drawn: level with the box's middle, the
+// same row a connector to its children would leave from, and touching the
+// box on the side the children grow on.
+func (n *node) markerBounds() navigator.Rect {
+	w := lipgloss.Width(n.marker())
+	x := n.x + n.Width()
+	if n.growsLeft() {
+		x = n.x - w
+	}
+	return navigator.Rect{X: x, Y: n.y + n.Height()/2, Width: w, Height: 1}
+}
+
+// growsLeft reports whether n's children are laid out to its left, which
+// is the case for every node on the root's left side.
+func (n *node) growsLeft() bool {
+	return n.parent != nil && n.x < n.parent.x
+}
+
+func (n *node) descendantCount() int {
+	count := 0
+	for _, c := range n.children {
+		count += 1 + c.descendantCount()
+	}
+	return count
+}
+
+// reveal expands every collapsed ancestor of n, and nothing else, so n
+// becomes visible while the rest of the map keeps its collapsed state. It
+// reports whether anything changed, so the caller can skip a needless
+// relayout.
+func reveal(n *node) bool {
+	changed := false
+	for p := n.parent; p != nil; p = p.parent {
+		if p.collapsed {
+			p.collapsed = false
+			changed = true
+		}
+	}
+	return changed
+}
+
+// All yields n and every visible node below it in preorder, so drawing,
+// hit testing and centering read the tree itself rather than a flattened
+// copy that would need re-syncing after every edit.
 func (n *node) All() iter.Seq[*node] {
 	return func(yield func(*node) bool) { n.walk(yield) }
 }
@@ -36,7 +118,7 @@ func (n *node) walk(yield func(*node) bool) bool {
 	if !yield(n) {
 		return false
 	}
-	for _, c := range n.children {
+	for _, c := range n.visibleChildren() {
 		if !c.walk(yield) {
 			return false
 		}
@@ -51,12 +133,15 @@ func (n *node) Parent() navigator.NavNode {
 	return n.parent
 }
 
+// Children only reports visible children, so navigators treat a collapsed
+// node as a leaf and never select a hidden node.
 func (n *node) Children() []navigator.NavNode {
-	if len(n.children) == 0 {
+	visible := n.visibleChildren()
+	if len(visible) == 0 {
 		return nil
 	}
-	out := make([]navigator.NavNode, len(n.children))
-	for i, c := range n.children {
+	out := make([]navigator.NavNode, len(visible))
+	for i, c := range visible {
 		out[i] = c
 	}
 	return out
@@ -64,8 +149,10 @@ func (n *node) Children() []navigator.NavNode {
 
 // OutlineText, OutlineColor, and OutlineChildren implement storage.Outline,
 // so a node is saved to OPML directly instead of being converted to an
-// intermediate type first. OutlineChildren copies into a new slice for the
-// same reason Children does.
+// intermediate type first. Like Children, OutlineChildren copies into a new
+// slice because Go can't use a []*node as a slice of interfaces. Unlike
+// Children, it includes hidden children, since collapsing must never drop
+// nodes from the file.
 func (n *node) OutlineText() string { return n.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
@@ -270,9 +357,9 @@ func splitSides(children []*node) (right, left []*node) {
 }
 
 // layoutSide lays out one side's branches as a non-layered tidy tree (see
-// tidy.go), so each child sits colGap past its own parent's far edge rather
-// than in a column shared with every node at its depth, and sibling
-// subtrees pack as closely as rowGap allows. The tidy layout grows
+// tidy.go), so each child sits its parent's reach past the parent's far
+// edge rather than in a column shared with every node at its depth, and
+// sibling subtrees pack as closely as rowGap allows. The tidy layout grows
 // downward, so it's fed boxes with their axes swapped (a box's height as
 // tidy width, its width as tidy depth) and the result is rotated back. The
 // branches hang under a virtual root the size of the real one, so the real
@@ -290,9 +377,9 @@ func layoutSide(root *node, children []*node, dir side) {
 			n: n,
 			y: y,
 			w: float64(n.Height() + rowGap),
-			h: float64(n.Width() + colGap),
+			h: float64(n.Width() + reach(n)),
 		}
-		for _, c := range n.children {
+		for _, c := range n.visibleChildren() {
 			t.c = append(t.c, convert(c, y+t.h))
 		}
 		return t
@@ -327,6 +414,15 @@ func layoutSide(root *node, children []*node, dir side) {
 	for _, c := range virtual.c {
 		place(c)
 	}
+}
+
+// reach is how far past its box a node claims room in the layout. It's
+// usually colGap, the room its connectors need. A collapsed node's marker
+// sits in that room too, so a marker wider than colGap claims its own
+// width plus a cell of space instead, keeping it clear of neighbouring
+// subtrees that the tidy layout would otherwise pack right up against it.
+func reach(n *node) int {
+	return max(colGap, lipgloss.Width(n.marker())+1)
 }
 
 // connector joins the facing middles of a parent and child box. Because

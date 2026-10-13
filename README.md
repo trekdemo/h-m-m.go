@@ -27,6 +27,8 @@ written straight back to a plain OPML file.
 - **Colour-coded branches.** Each top-level branch gets its own colour from
   the palette, and its descendants inherit it. Colours are saved to the
   file, so you can tweak them by hand.
+- **Collapsible subtrees.** `Space` hides everything below a node, and a
+  `+N` marker shows how many nodes are tucked away.
 - **Mouse support.** Click a node to select it, or drag to pan the canvas
   like a map.
 - **Autosave to OPML.** Changes are saved as soon as you leave edit mode,
@@ -100,11 +102,20 @@ hmm path/to/map.opml
 | `d`, `Backspace`        | Delete the selected node and its subtree     |
 | `K`                     | Move the node up among its siblings          |
 | `J`                     | Move the node down among its siblings        |
+| `Space`                 | Collapse or expand the selected node         |
 | `?`                     | Toggle the full help                         |
 | `q`, `Esc`, `Ctrl+C`    | Quit                                         |
 
 Adding a sibling to the root adds a child instead, since the root has no
 siblings. The root itself can't be deleted.
+
+Collapsing a node hides everything below it until you expand it again.
+A collapsed node shows a stub and a count of the hidden nodes, such as
+`Tokyo ─ +3`, on the side its children grow on.
+Collapsing is just a way of looking at the map: it isn't saved, so a map
+always opens fully expanded. The root and nodes without children can't be
+collapsed. While a node is collapsed, the arrow keys treat it as if it had
+no children.
 
 ### Edit mode
 
@@ -118,14 +129,16 @@ siblings. The root itself can't be deleted.
 | `Enter`        | Insert a newline (nodes can span several lines)   |
 | `Esc`          | Leave edit mode and save                          |
 
-If you leave edit mode on a node with no text, the node is removed. So
-`o` followed by `Esc` doesn't leave empty boxes behind.
+If you leave edit mode on a node with no text and no children, the node
+is removed. So `o` followed by `Esc` doesn't leave empty boxes behind,
+while clearing the text of a node with children never deletes them.
 
 ### Mouse
 
 | Action      | Effect             |
 | ----------- | ------------------ |
 | Click       | Select a node      |
+| Click a `+N` marker | Expand a collapsed node |
 | Click + drag | Pan the canvas    |
 
 ## File format
@@ -196,10 +209,10 @@ after UI changes.
 
 h-m-m.go is a young project and doesn't do everything the original
 h-m-m does yet. Today it covers the core loop: open a map, navigate,
-add, edit, delete, reorder and autosave. Things that would bring it
-closer to the original include:
+add, edit, delete, reorder, collapse and autosave. Things that would
+bring it closer to the original include:
 
-- [ ] Collapsing and expanding subtrees
+- [x] Collapsing and expanding subtrees
 - [ ] Search
 - [ ] Undo / redo
 - [ ] Copy, cut and paste of subtrees
