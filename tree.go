@@ -27,7 +27,8 @@ type node struct {
 	children []*node
 	side     side // which side of the root this grows on; only set on the root's children
 
-	// collapsed hides n's descendants from layout, drawing and navigation.
+	// collapsed hides the node's descendants from layout, drawing and
+	// navigation.
 	// It's view state, so it isn't saved, and it's kept on hidden nodes so
 	// a nested collapse survives its ancestor being collapsed and expanded.
 	collapsed bool
@@ -148,9 +149,10 @@ func (n *node) Children() []navigator.NavNode {
 
 // OutlineText, OutlineColor, and OutlineChildren implement storage.Outline,
 // so a node is saved to OPML directly instead of being converted to an
-// intermediate type first. OutlineChildren copies into a new slice for the
-// same reason Children does, but includes hidden children, since collapsing
-// must never drop nodes from the file.
+// intermediate type first. Like Children, OutlineChildren copies into a new
+// slice because Go can't use a []*node as a slice of interfaces. Unlike
+// Children, it includes hidden children, since collapsing must never drop
+// nodes from the file.
 func (n *node) OutlineText() string { return n.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
@@ -355,9 +357,9 @@ func splitSides(children []*node) (right, left []*node) {
 }
 
 // layoutSide lays out one side's branches as a non-layered tidy tree (see
-// tidy.go), so each child sits colGap past its own parent's far edge rather
-// than in a column shared with every node at its depth, and sibling
-// subtrees pack as closely as rowGap allows. The tidy layout grows
+// tidy.go), so each child sits its parent's reach past the parent's far
+// edge rather than in a column shared with every node at its depth, and
+// sibling subtrees pack as closely as rowGap allows. The tidy layout grows
 // downward, so it's fed boxes with their axes swapped (a box's height as
 // tidy width, its width as tidy depth) and the result is rotated back. The
 // branches hang under a virtual root the size of the real one, so the real

@@ -205,9 +205,9 @@ func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
 	}
 }
 
-// setSelectedNode reveals n first if it's hidden, so whatever selects a
-// node (adding a child to a collapsed node, and later search) never leaves
-// the selection on a box that isn't drawn.
+// setSelectedNode selects n and scrolls it into view, first revealing it
+// if it's hidden, so no caller (such as adding a child to a collapsed node)
+// can leave the selection on a box that isn't drawn.
 func (m *model) setSelectedNode(n *node) {
 	if reveal(n) {
 		layoutTree(m.root)
@@ -271,9 +271,7 @@ func (m *model) moveSibling(dir int) {
 }
 
 // toggleCollapsed collapses or expands the selected node. It doesn't
-// save: collapsed state is view state, so toggling it isn't an edit. The
-// selected node stays visible either way, so re-selecting it only scrolls
-// as far as needed to keep it on screen after the relayout.
+// save: collapsed state is view state, so toggling it isn't an edit.
 func (m *model) toggleCollapsed() {
 	n := m.selected
 	if !n.canCollapse() {
@@ -281,6 +279,7 @@ func (m *model) toggleCollapsed() {
 	}
 	n.collapsed = !n.collapsed
 	layoutTree(m.root)
+	// The relayout can move n, so re-select it to scroll it back on screen.
 	m.setSelectedNode(n)
 }
 
@@ -405,8 +404,8 @@ func (m model) markerAt(x, y int) *node {
 	return nil
 }
 
-// buildCanvas composites the connector edges and boxes currently visible in
-// the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
+// buildCanvas composites the connector edges, boxes and collapsed nodes'
+// markers currently visible in the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
 // drawn first, cell by cell, so box borders always render cleanly on top.
 func (m model) buildCanvas() *lipgloss.Canvas {
 	canvas := lipgloss.NewCanvas(m.viewportW, m.viewportH)

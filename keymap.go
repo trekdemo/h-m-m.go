@@ -4,7 +4,8 @@ import "charm.land/bubbles/v2/key"
 
 // keyMap defines the keybindings used in normalMode: quitting, entering
 // editMode, adding and deleting nodes, navigating, reordering siblings,
-// collapsing and expanding nodes, and toggling help. editMode has its own editModeKeyMap.
+// collapsing and expanding nodes, and toggling help. editMode has its own
+// editModeKeyMap.
 type keyMap struct {
 	Quit           key.Binding
 	EnterEdit      key.Binding
