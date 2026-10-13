@@ -145,3 +145,43 @@ func TestCollapsedSubtreeIsNotLaidOutOrDrawn(t *testing.T) {
 		t.Fatalf("hidden nodes were drawn:\n%s", out)
 	}
 }
+
+func TestAddingAChildRevealsIt(t *testing.T) {
+	m := newCollapseModel(t)
+	branch := m.root.children[0]
+	twig := branch.children[0]
+	twig.collapsed = true
+	m.setSelectedNode(branch)
+	m = pressSpace(m)
+
+	mm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = mm.(model)
+
+	if branch.collapsed {
+		t.Fatal("adding a child to a collapsed node should expand it")
+	}
+	if !twig.collapsed {
+		t.Fatal("revealing the new child should leave its collapsed siblings alone")
+	}
+	if !slices.Contains(slices.Collect(m.root.All()), m.selected) {
+		t.Fatal("the new child is selected but not visible")
+	}
+}
+
+func TestSelectingAHiddenNodeRevealsOnlyItsAncestors(t *testing.T) {
+	m := newCollapseModel(t)
+	branch := m.root.children[0]
+	twig := branch.children[0]
+	bud := twig.children[0]
+	twig.collapsed = true
+	branch.collapsed = true
+	layoutTree(m.root)
+
+	m.setSelectedNode(bud)
+	if branch.collapsed || twig.collapsed {
+		t.Fatal("selecting a hidden node should expand every collapsed ancestor")
+	}
+	if !slices.Contains(slices.Collect(m.root.All()), bud) {
+		t.Fatal("the selected node is still hidden")
+	}
+}

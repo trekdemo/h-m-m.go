@@ -201,7 +201,13 @@ func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
 	}
 }
 
+// setSelectedNode reveals n first if it's hidden, so whatever selects a
+// node (adding a child to a collapsed node, and later search) never leaves
+// the selection on a box that isn't drawn.
 func (m *model) setSelectedNode(n *node) {
+	if reveal(n) {
+		layoutTree(m.root)
+	}
 	m.selected = n
 
 	// Shift the viewport by the minimum amount needed so the selected box is

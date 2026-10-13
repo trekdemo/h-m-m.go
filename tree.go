@@ -46,6 +46,21 @@ func (n *node) canCollapse() bool {
 	return n.parent != nil && len(n.children) > 0
 }
 
+// reveal expands every collapsed ancestor of n, and nothing else, so n
+// becomes visible while the rest of the map keeps its collapsed state. It
+// reports whether anything changed, so the caller can skip a needless
+// relayout.
+func reveal(n *node) bool {
+	changed := false
+	for p := n.parent; p != nil; p = p.parent {
+		if p.collapsed {
+			p.collapsed = false
+			changed = true
+		}
+	}
+	return changed
+}
+
 // All yields n and every visible node below it in preorder, so drawing,
 // hit testing and centering read the tree itself rather than a flattened
 // copy that would need re-syncing after every edit.
