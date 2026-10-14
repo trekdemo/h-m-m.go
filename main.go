@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -19,6 +20,9 @@ import (
 	"hmm/navigator"
 	"hmm/storage"
 )
+
+// statusTimeout is how long a status message stays visible before it clears.
+const statusTimeout = 5 * time.Second
 
 // defaultTreePath is loaded on startup when no file path is given on the
 // command line.
@@ -43,7 +47,8 @@ type model struct {
 	nav                  navigator.Navigator
 
 	savePath  string // OPML file that writeToFile writes the tree back to
-	statusMsg string // last save result, shown below the canvas until overwritten
+	statusMsg string // last save result, shown below the canvas until it times out
+	statusID  int    // bumped on every new statusMsg so stale clearStatusMsgs are ignored
 
 	mode     editorMode
 	editText []rune // text buffer being edited, replaces the selected box's text on commit
@@ -54,6 +59,10 @@ type model struct {
 	dragging     bool
 	lastX, lastY int
 }
+
+// clearStatusMsg asks Update to clear the status message, unless a newer one
+// has replaced it since (its id no longer matches the model's statusID).
+type clearStatusMsg struct{ id int }
 
 func (m model) Init() tea.Cmd { return nil }
 
@@ -88,17 +97,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.Delete):
 			if m.selected != m.root {
 				m.removeCurrentNode()
-				m.writeToFile()
-				return m, nil
+				return m, m.writeToFile()
 			}
 		case key.Matches(msg, normalModeKeys.MoveSibUp):
 			m.moveSibling(-1)
-			m.writeToFile()
-			return m, nil
+			return m, m.writeToFile()
 		case key.Matches(msg, normalModeKeys.MoveSibDown):
 			m.moveSibling(1)
-			m.writeToFile()
-			return m, nil
+			return m, m.writeToFile()
 		case key.Matches(msg, normalModeKeys.ToggleCollapse):
 			m.toggleCollapsed()
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
@@ -121,6 +127,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.dragging = true
 			m.lastX, m.lastY = msg.X, msg.Y
+		}
+
+	case clearStatusMsg:
+		if msg.id == m.statusID {
+			m.statusMsg = ""
 		}
 
 	case tea.MouseReleaseMsg:
@@ -186,14 +197,24 @@ func (m *model) centerOnTree() {
 	m.offsetY = cy - m.viewportH/2
 }
 
-// writeToFile writes the tree back to m.savePath as OPML, recording the outcome in
-// m.statusMsg so the view can show it.
-func (m *model) writeToFile() {
+// writeToFile writes the tree back to m.savePath as OPML, reporting the
+// outcome as a status message.
+func (m *model) writeToFile() tea.Cmd {
 	if err := storage.SaveOPML(m.savePath, m.root); err != nil {
-		m.statusMsg = "save failed: " + err.Error()
-		return
+		return m.setStatus("save failed: " + err.Error())
 	}
-	m.statusMsg = "saved to " + m.savePath
+	return m.setStatus("saved to " + m.savePath)
+}
+
+// setStatus shows msg below the canvas and returns a command that clears it
+// after statusTimeout.
+func (m *model) setStatus(msg string) tea.Cmd {
+	m.statusMsg = msg
+	m.statusID++
+	id := m.statusID
+	return tea.Tick(statusTimeout, func(time.Time) tea.Msg {
+		return clearStatusMsg{id: id}
+	})
 }
 
 // moveSelection selects the node that query (one of a navigator's directional
@@ -318,8 +339,7 @@ func (m *model) updateEditMode(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, editModeKeys.Exit):
 		m.mode = normalMode
 		m.removeIfEmpty()
-		m.writeToFile()
-		return nil
+		return m.writeToFile()
 	case key.Matches(msg, editModeKeys.Backspace):
 		if m.editCurs > 0 {
 			m.editText = slices.Delete(m.editText, m.editCurs-1, m.editCurs)
