@@ -34,10 +34,13 @@ func nodeStyle(c color.Color) lipgloss.Style {
 		Background(lipgloss.Darken(c, 0.8))
 }
 
-// selectedStyle derives the style drawn for the selected node.
-func selectedStyle(base lipgloss.Style) lipgloss.Style {
-	return base.Background(lipgloss.Yellow).Foreground(lipgloss.Black).Bold(true)
-}
+// selectedStyle is drawn for the selected node whatever its color. Its
+// padding matches nodeStyle's so selecting a box doesn't resize it.
+var selectedStyle = lipgloss.NewStyle().
+	Padding(0, 1).
+	Foreground(lipgloss.Black).
+	Background(lipgloss.Yellow).
+	Bold(true)
 
 // hexColor formats c as "#rrggbb".
 func hexColor(c color.Color) string {

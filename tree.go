@@ -169,19 +169,12 @@ func (n *node) OutlineChildren() []storage.Outline {
 }
 
 // newNode is shared by the initial build and by edits that insert nodes
-// later, so both produce identically styled boxes. It derives the selected
-// style up front so drawing the selection never rebuilds styles. Position
-// and tree links are left zero for the caller and layoutTree to fill in.
+// later, so both produce identically styled boxes. Position and tree links
+// are left zero for the caller and layoutTree to fill in.
 func newNode(text string, c color.Color) *node {
-	style := nodeStyle(c)
-	selStyle := selectedStyle(style)
-
 	n := &node{
-		color: c,
-		textBox: textBox{
-			style:    style,
-			selStyle: selStyle,
-		},
+		color:   c,
+		textBox: textBox{style: nodeStyle(c)},
 	}
 	n.setText(text)
 	return n

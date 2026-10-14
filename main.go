@@ -458,7 +458,7 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 				rendered = n.RenderAsSelected()
 				if m.mode == editMode {
 					// The cursor lives in the edit buffer, not the box text.
-					rendered = n.selStyle.Render(m.editingDisplayText())
+					rendered = selectedStyle.Render(m.editingDisplayText())
 				}
 			}
 			layers = append(layers, lipgloss.NewLayer(rendered).X(n.x-m.offsetX).Y(n.y-m.offsetY))

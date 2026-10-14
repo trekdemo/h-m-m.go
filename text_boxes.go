@@ -14,7 +14,6 @@ type textBox struct {
 	rendered string // text in style, kept in step by setText
 	x, y     int    // top-left position in canvas coordinates
 	style    lipgloss.Style
-	selStyle lipgloss.Style // drawn for the selected node
 }
 
 // setText is the only way to change the text, so the cached rendering
@@ -28,7 +27,7 @@ func (b textBox) Render() string { return b.rendered }
 
 // RenderAsSelected isn't cached: only one box is selected at a time, so
 // it costs a single render per frame.
-func (b textBox) RenderAsSelected() string { return b.selStyle.Render(b.text) }
+func (b textBox) RenderAsSelected() string { return selectedStyle.Render(b.text) }
 
 func (b textBox) Width() int  { return lipgloss.Width(b.Render()) }
 func (b textBox) Height() int { return lipgloss.Height(b.Render()) }
