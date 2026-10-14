@@ -213,25 +213,14 @@ func (m *model) setSelectedNode(n *node) {
 		layoutTree(m.root)
 	}
 	m.selected = n
-
-	// Shift the viewport by the minimum amount needed so the selected box is
-	// fully visible, so keyboard navigation never selects a node the user can't
-	// see.
-	m.offsetX = scrollToShow(m.offsetX, m.viewportW, n.x, n.Width())
-	m.offsetY = scrollToShow(m.offsetY, m.viewportH, n.y, n.Height())
+	m.scrollIntoView(n)
 }
 
-// scrollToShow returns the viewport offset along one axis moved by the
-// minimum amount needed for the span [pos, pos+size) to be visible in a
-// viewport of length view starting at offset.
-func scrollToShow(offset, view, pos, size int) int {
-	switch {
-	case pos < offset:
-		return pos
-	case pos+size > offset+view:
-		return pos + size - view
-	}
-	return offset
+// scrollIntoView shifts the viewport by the minimum amount needed for n's
+// box to be visible
+func (m *model) scrollIntoView(n *node) {
+	m.offsetX = min(n.x, max(m.offsetX, n.x+n.Width()-m.viewportW))
+	m.offsetY = min(n.y, max(m.offsetY, n.y+n.Height()-m.viewportH))
 }
 
 // enterEditMode copies the selected node's text into the edit buffer and
