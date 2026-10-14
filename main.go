@@ -62,7 +62,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if m.mode == editMode {
 			cmd := m.updateEditMode(msg)
-			m.updateViewportSize()
+			m.updateComponentSizes()
 			return m, cmd
 		}
 
@@ -78,13 +78,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addChild()
 			m.enterEditMode()
 		case key.Matches(msg, normalModeKeys.Left):
-			m.move(m.nav.LeftOf)
+			m.moveSelection(m.nav.LeftOf)
 		case key.Matches(msg, normalModeKeys.Right):
-			m.move(m.nav.RightOf)
+			m.moveSelection(m.nav.RightOf)
 		case key.Matches(msg, normalModeKeys.Up):
-			m.move(m.nav.Above)
+			m.moveSelection(m.nav.Above)
 		case key.Matches(msg, normalModeKeys.Down):
-			m.move(m.nav.Below)
+			m.moveSelection(m.nav.Below)
 		case key.Matches(msg, normalModeKeys.Delete):
 			if m.selected != m.root {
 				m.removeCurrentNode()
@@ -104,7 +104,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, normalModeKeys.ToggleHelp):
 			m.help.ShowAll = !m.help.ShowAll
 		}
-		m.updateViewportSize()
+		m.updateComponentSizes()
 
 	case tea.WindowSizeMsg:
 		m.setViewportSize(msg.Width, msg.Height)
@@ -169,10 +169,10 @@ func (m model) currentKeyMap() help.KeyMap {
 func (m *model) setViewportSize(width, height int) {
 	m.windowW = width
 	m.windowH = height
-	m.updateViewportSize()
+	m.updateComponentSizes()
 }
 
-func (m *model) updateViewportSize() {
+func (m *model) updateComponentSizes() {
 	m.help.SetWidth(m.windowW)
 	reserved := lipgloss.Height(m.help.View(m.currentKeyMap()))
 	reserved++ // Reserve a line for statusMsg
@@ -196,10 +196,10 @@ func (m *model) writeToFile() {
 	m.statusMsg = "saved to " + m.savePath
 }
 
-// move selects the node that query (one of a navigator's directional
+// moveSelection selects the node that query (one of a navigator's directional
 // lookups) finds from the current one, leaving the selection alone when
 // there's nothing in that direction.
-func (m *model) move(query func(navigator.NavNode) navigator.NavNode) {
+func (m *model) moveSelection(query func(navigator.NavNode) navigator.NavNode) {
 	if target := query(m.selected); target != nil {
 		m.setSelectedNode(target.(*node))
 	}
