@@ -15,10 +15,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 
 	"hmm/geom"
 	"hmm/navigator"
+	"hmm/render"
 	"hmm/storage"
 )
 
@@ -162,7 +162,7 @@ func (m model) View() tea.View {
 
 	v.Content = lipgloss.JoinVertical(
 		lipgloss.Top,
-		m.buildCanvas().Render(),
+		m.drawCanvas(),
 		m.statusMsg,
 		m.help.View(m.currentKeyMap()),
 	)
@@ -192,10 +192,15 @@ func (m *model) updateComponentSizes() {
 	m.viewportH = max(0, m.windowH-reserved)
 }
 
+// centerOnTree aims the viewport at the middle of the area every visible
+// box covers, which is where the tree actually is.
 func (m *model) centerOnTree() {
-	cx, cy := BoxesCentroid(m.root.All())
-	m.offsetX = cx - m.viewportW/2
-	m.offsetY = cy - m.viewportH/2
+	b := m.root.Bounds()
+	for n := range m.root.All() {
+		b = b.Union(n.Bounds())
+	}
+	m.offsetX = (2*b.X+b.Width)/2 - m.viewportW/2
+	m.offsetY = (2*b.Y+b.Height)/2 - m.viewportH/2
 }
 
 // writeToFile writes the tree back to m.savePath as OPML, reporting the
@@ -241,8 +246,8 @@ func (m *model) setSelectedNode(n *node) {
 // scrollIntoView shifts the viewport by the minimum amount needed for n's
 // box to be visible
 func (m *model) scrollIntoView(n *node) {
-	m.offsetX = min(n.x, max(m.offsetX, n.x+n.Width()-m.viewportW))
-	m.offsetY = min(n.y, max(m.offsetY, n.y+n.Height()-m.viewportH))
+	m.offsetX = min(n.x, max(m.offsetX, n.x+n.size.Width-m.viewportW))
+	m.offsetY = min(n.y, max(m.offsetY, n.y+n.size.Height-m.viewportH))
 }
 
 // enterEditMode copies the selected node's text into the edit buffer and
@@ -414,64 +419,33 @@ func (m model) markerAt(x, y int) *node {
 	return nil
 }
 
-// onScreen reports whether any part of r, in canvas coordinates, falls
-// inside the viewport, so drawing can skip building layers for things
-// that are entirely off screen.
-func (m model) onScreen(r geom.Rect) bool {
-	sx, sy := r.X-m.offsetX, r.Y-m.offsetY
-	return sx+r.Width > 0 && sx < m.viewportW && sy+r.Height > 0 && sy < m.viewportH
-}
-
-// buildCanvas composites the connector edges, boxes and collapsed nodes'
-// markers currently visible in the viewport onto a lipgloss.Canvas sized to the viewport. Edges are
-// drawn first, cell by cell, so box borders always render cleanly on top.
-func (m model) buildCanvas() *lipgloss.Canvas {
-	canvas := lipgloss.NewCanvas(m.viewportW, m.viewportH)
-
-	// Accumulate every edge's directions per canvas cell first: when
-	// sibling edges share a trunk column, a cell can have lines coming
-	// from more than one direction (e.g. west, north, and south), which
-	// needs a junction character like ┤ rather than whichever single
-	// edge's rune happened to be drawn last.
-	dirs := map[point]direction{}
+// drawCanvas draws the visible part of the map into the viewport: the
+// connectors to every visible child, then every box and collapsed node's
+// marker on top of them.
+func (m model) drawCanvas() string {
+	canvas := render.NewCanvas(geom.Rect{X: m.offsetX, Y: m.offsetY, Width: m.viewportW, Height: m.viewportH})
 	for n := range m.root.All() {
 		for _, child := range n.Children() {
-			for _, c := range edgeCells(connector(n, child)) {
-				dirs[point{c.x, c.y}] |= c.dir
-			}
+			canvas.Line(connector(n, child))
 		}
 	}
-	for p, d := range dirs {
-		sx, sy := p.x-m.offsetX, p.y-m.offsetY
-		if sx < 0 || sx >= m.viewportW || sy < 0 || sy >= m.viewportH {
-			continue
-		}
-		canvas.SetCell(sx, sy, &uv.Cell{Content: string(dirToRune(d)), Width: 1, Style: uv.Style{Fg: edgeColor}})
-	}
-
-	var layers []*lipgloss.Layer
 	for n := range m.root.All() {
-		// The box and its marker are culled separately: a marker sits
-		// outside its box, so it can be on screen while the box isn't.
-		if m.onScreen(n.Bounds()) {
-			rendered := n.Render()
-			if n == m.selected {
-				rendered = n.RenderAsSelected()
-				if m.mode == editMode {
-					// The cursor lives in the edit buffer, not the box text.
-					rendered = selectedStyle.Render(m.editingDisplayText())
-				}
+		box := render.Node(n.text, n.color)
+		if n == m.selected {
+			box = render.Selected(n.text)
+			if m.mode == editMode {
+				// The cursor lives in the edit buffer, not the box text.
+				box = render.Selected(m.editingDisplayText())
 			}
-			layers = append(layers, lipgloss.NewLayer(rendered).X(n.x-m.offsetX).Y(n.y-m.offsetY))
 		}
-		if mb := n.markerBounds(); n.collapsed && m.onScreen(mb) {
-			marker := lipgloss.NewStyle().Foreground(n.color).Render(n.marker())
-			layers = append(layers, lipgloss.NewLayer(marker).X(mb.X-m.offsetX).Y(mb.Y-m.offsetY))
+		canvas.Draw(n.Bounds(), box)
+		// A marker sits outside its box, so it's culled on its own: it
+		// can be on screen while the box isn't.
+		if n.collapsed {
+			canvas.Draw(n.markerBounds(), render.Tint(n.marker(), n.color))
 		}
 	}
-	canvas.Compose(lipgloss.NewCompositor(layers...))
-
-	return canvas
+	return canvas.Render()
 }
 
 func newModel(spec storage.Node, savePath string) model {

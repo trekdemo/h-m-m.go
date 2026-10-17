@@ -1,15 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"iter"
 	"slices"
 
-	lipgloss "charm.land/lipgloss/v2"
-
 	"hmm/geom"
 	"hmm/navigator"
+	"hmm/render"
 	"hmm/storage"
 )
 
@@ -28,11 +26,13 @@ var (
 	_ storage.Outline            = (*node)(nil)
 )
 
-// node is a treeSpec after box rendering and layout: it carries its
-// rendered box plus the tree structure needed to lay it out and draw
-// connector lines to its children.
+// node is one node of the map: its text and color, its place in the tree,
+// and where the layout put its box. How the box looks is left to render;
+// the node only keeps the size render measured for its text.
 type node struct {
-	textBox
+	text     string
+	size     geom.Size // the box's size, kept in step with text by setText
+	x, y     int       // the box's top-left corner, in canvas coordinates
 	color    color.Color
 	parent   *node
 	children []*node
@@ -51,32 +51,42 @@ func (n *node) canCollapse() bool {
 	return n.parent != nil && len(n.children) > 0
 }
 
-// marker is the stub and count drawn beside a collapsed node, so it
-// doesn't pass for a leaf: "─ +5" on the side its children would grow on,
-// mirrored to "+5 ─" on the left. The count includes every hidden node,
-// not just direct children, to show how much is tucked away. Expanded
-// nodes have no marker.
+// setText is the only way to change the text, so the cached size never
+// goes stale. The size is cached because the layout asks for it often.
+func (n *node) setText(text string) {
+	n.text = text
+	n.size = render.Size(text)
+}
+
+// Size and Bounds report the node's box, for the layout, the navigators
+// and hit testing.
+func (n *node) Size() geom.Size { return n.size }
+
+func (n *node) Bounds() geom.Rect {
+	return geom.Rect{X: n.x, Y: n.y, Width: n.size.Width, Height: n.size.Height}
+}
+
+// marker is drawn beside a collapsed node (see render.Marker), on the side
+// its children would grow on. The count includes every hidden node, not
+// just direct children, to show how much is tucked away. Expanded nodes
+// have no marker.
 func (n *node) marker() string {
 	if !n.collapsed {
 		return ""
 	}
-	count := fmt.Sprintf("+%d", n.descendantCount())
-	if n.growsLeft() {
-		return count + " ─"
-	}
-	return "─ " + count
+	return render.Marker(n.descendantCount(), n.growsLeft())
 }
 
 // markerBounds is where marker is drawn: level with the box's middle, the
 // same row a connector to its children would leave from, and touching the
 // box on the side the children grow on.
 func (n *node) markerBounds() geom.Rect {
-	w := lipgloss.Width(n.marker())
-	x := n.x + n.Width()
+	w := render.Width(n.marker())
+	x := n.x + n.size.Width
 	if n.growsLeft() {
 		x = n.x - w
 	}
-	return geom.Rect{X: x, Y: n.y + n.Height()/2, Width: w, Height: 1}
+	return geom.Rect{X: x, Y: n.y + n.size.Height/2, Width: w, Height: 1}
 }
 
 // growsLeft reports whether n's children are laid out to its left, which
@@ -166,10 +176,7 @@ func (n *node) OutlineChildren() []storage.Outline {
 // later, so both produce identically styled boxes. Position and tree links
 // are left zero for the caller and layoutTree to fill in.
 func newNode(text string, c color.Color) *node {
-	n := &node{
-		color:   c,
-		textBox: textBox{style: nodeStyle(c)},
-	}
+	n := &node{color: c}
 	n.setText(text)
 	return n
 }
@@ -180,7 +187,7 @@ func newNode(text string, c color.Color) *node {
 // has, which steps through the palette as branches are added.
 func childColor(parent *node) color.Color {
 	if parent.parent == nil {
-		return branchColor(len(parent.children))
+		return render.BranchColor(len(parent.children))
 	}
 	return parent.color
 }
@@ -189,7 +196,7 @@ func childColor(parent *node) color.Color {
 // and lays out. Only the root is special-cased, falling back to rootColor
 // when the spec has no color; buildSubtree handles everything below it.
 func buildTree(spec storage.Node) *node {
-	return buildSubtree(spec, newNode(spec.Text, colorOr(spec.Color, rootColor)))
+	return buildSubtree(spec, newNode(spec.Text, colorOr(spec.Color, render.RootColor)))
 }
 
 // buildSubtree recurses depth-first, preferring each spec node's own color
@@ -363,8 +370,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		t := &tidyTree{
 			n: n,
 			y: y,
-			w: float64(n.Height() + rowGap),
-			h: float64(n.Width() + reach(n)),
+			w: float64(n.size.Height + rowGap),
+			h: float64(n.size.Width + reach(n)),
 		}
 		for _, c := range n.Children() {
 			t.c = append(t.c, convert(c, y+t.h))
@@ -372,8 +379,8 @@ func layoutSide(root *node, children []*node, dir side) {
 		return t
 	}
 	virtual := &tidyTree{
-		w: float64(root.Height() + rowGap),
-		h: float64(root.Width() + colGap),
+		w: float64(root.size.Height + rowGap),
+		h: float64(root.size.Width + colGap),
 	}
 	for _, c := range children {
 		virtual.c = append(virtual.c, convert(c, virtual.h))
@@ -392,7 +399,7 @@ func layoutSide(root *node, children []*node, dir side) {
 		if dir == sideRight {
 			n.x = root.x + depth
 		} else {
-			n.x = root.x + root.Width() - depth - n.Width()
+			n.x = root.x + root.size.Width - depth - n.size.Width
 		}
 		for _, c := range t.c {
 			place(c)
@@ -409,28 +416,26 @@ func layoutSide(root *node, children []*node, dir side) {
 // width plus a cell of space instead, keeping it clear of neighbouring
 // subtrees that the tidy layout would otherwise pack right up against it.
 func reach(n *node) int {
-	return max(colGap, lipgloss.Width(n.marker())+1)
+	return max(colGap, render.Width(n.marker())+1)
 }
 
-// connector joins the facing middles of a parent and child box. Because
-// edgeCells assumes edges run left to right, a child on the left side
-// starts the edge at the child, mirroring the right side's edge cell for
-// cell (including which end's first cell is hidden under a box border).
-func connector(p, c *node) edge {
+// connector routes the line joining the facing middles of a parent and
+// child box, as an elbow that jogs vertically halfway between them.
+// Siblings share a parent end and so a jog column, so their jogs read as
+// branches off one vertical trunk. The child end starts one cell inside
+// the child's box, hidden under it, so the line meets the box without a
+// gap; the left side mirrors the right cell for cell.
+func connector(p, c *node) []geom.Point {
+	x1, x2 := p.x+p.size.Width, c.x
 	if c.x < p.x {
-		return edge{
-			x1: c.x + c.Width() - 1,
-			y1: c.y + c.Height()/2,
-			x2: p.x - 1,
-			y2: p.y + p.Height()/2,
-		}
+		x1, x2 = p.x-1, c.x+c.size.Width-1
 	}
-	return edge{
-		x1: p.x + p.Width(),
-		y1: p.y + p.Height()/2,
-		x2: c.x,
-		y2: c.y + c.Height()/2,
+	y1, y2 := p.y+p.size.Height/2, c.y+c.size.Height/2
+	if y1 == y2 {
+		return []geom.Point{{X: x1, Y: y1}, {X: x2, Y: y2}}
 	}
+	mid := (x1 + x2) / 2
+	return []geom.Point{{X: x1, Y: y1}, {X: mid, Y: y1}, {X: mid, Y: y2}, {X: x2, Y: y2}}
 }
 
 // buildScene is the one-call setup for a freshly loaded spec: build the
@@ -439,113 +444,4 @@ func buildScene(spec storage.Node) *node {
 	root := buildTree(spec)
 	layoutTree(root)
 	return root
-}
-
-// point is a canvas coordinate, used as a map key to accumulate the
-// directions of every edge that touches a given cell.
-type point struct{ x, y int }
-
-// direction is a bitmask of the cardinal directions a line passes through
-// a cell in. Multiple edges can contribute directions to the same cell
-// (e.g. siblings branching off a shared trunk column), so cells are
-// accumulated by OR-ing directions together before being converted to a
-// single box-drawing rune.
-type direction uint8
-
-const (
-	dirNorth direction = 1 << iota
-	dirSouth
-	dirEast
-	dirWest
-)
-
-// edge is a connector line between a parent box and a child box, in canvas
-// coordinates, always running left to right (x1 < x2).
-type edge struct {
-	x1, y1, x2, y2 int
-}
-
-// edgeCell is a single character position belonging to a drawn edge, and
-// the direction(s) the line runs through it. Accumulating these (via OR)
-// per position, across all edges, is what lets branching/merging lines
-// render as proper junction characters instead of one edge's stroke
-// silently overwriting another's.
-type edgeCell struct {
-	x, y int
-	dir  direction
-}
-
-// edgeCells draws connectors as elbows that jog vertically halfway
-// between the two boxes. Siblings share a parent edge and a column, so
-// their jogs land on the same x and read as branches off one vertical
-// trunk.
-//
-// Each cell only records the directions this one edge passes through it,
-// not a rune, because the right character depends on every edge touching
-// that cell; the caller ORs them together and resolves the rune with
-// dirToRune.
-func edgeCells(e edge) []edgeCell {
-	if e.y1 == e.y2 {
-		var cells []edgeCell
-		for x := e.x1; x <= e.x2; x++ {
-			cells = append(cells, edgeCell{x, e.y1, dirEast | dirWest})
-		}
-		return cells
-	}
-
-	midX := (e.x1 + e.x2) / 2
-	var cells []edgeCell
-	for x := e.x1; x < midX; x++ {
-		cells = append(cells, edgeCell{x, e.y1, dirEast | dirWest})
-	}
-	for x := midX + 1; x <= e.x2; x++ {
-		cells = append(cells, edgeCell{x, e.y2, dirEast | dirWest})
-	}
-
-	dy := 1
-	corner1, corner2 := dirWest|dirSouth, dirNorth|dirEast // going down
-	if e.y2 < e.y1 {
-		dy = -1
-		corner1, corner2 = dirWest|dirNorth, dirSouth|dirEast // going up
-	}
-	cells = append(cells, edgeCell{midX, e.y1, corner1})
-	for y := e.y1 + dy; y != e.y2; y += dy {
-		cells = append(cells, edgeCell{midX, y, dirNorth | dirSouth})
-	}
-	cells = append(cells, edgeCell{midX, e.y2, corner2})
-
-	return cells
-}
-
-// dirToRune uses rounded elbows to match the boxes' rounded borders, but
-// has to fall back to square junctions where three or four lines meet,
-// since Unicode has no rounded T or cross. A lone direction (a stub end)
-// still draws as a straight line rather than disappearing.
-func dirToRune(d direction) rune {
-	switch d {
-	case dirNorth, dirSouth, dirNorth | dirSouth:
-		return '│'
-	case dirEast, dirWest, dirEast | dirWest:
-		return '─'
-	case dirNorth | dirEast:
-		return '╰'
-	case dirNorth | dirWest:
-		return '╯'
-	case dirSouth | dirEast:
-		return '╭'
-	case dirSouth | dirWest:
-		return '╮'
-	case dirNorth | dirSouth | dirEast:
-		return '├'
-	case dirNorth | dirSouth | dirWest:
-		return '┤'
-	case dirNorth | dirEast | dirWest:
-		return '┴'
-	case dirSouth | dirEast | dirWest:
-		return '┬'
-	case dirNorth | dirSouth | dirEast | dirWest:
-		return '┼'
-	default:
-		return ' '
-	}
 }

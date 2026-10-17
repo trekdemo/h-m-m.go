@@ -46,7 +46,7 @@ func TestModelSmoke(t *testing.T) {
 			if i == j {
 				continue
 			}
-			if rectsOverlap(a.x, a.y, a.Width(), a.Height(), b.x, b.y, b.Width(), b.Height()) {
+			if a.Bounds().Overlaps(b.Bounds()) {
 				t.Fatalf("boxes %d and %d overlap", i, j)
 			}
 		}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"hmm/geom"
 	"hmm/navigator"
 	"hmm/storage"
 )
@@ -19,10 +20,10 @@ func TestBuildDemoSceneLayout(t *testing.T) {
 	}
 	root := buildScene(demoTree)
 	nodes := slices.Collect(root.All())
-	var edges []edge
+	var routes [][]geom.Point
 	for _, n := range nodes {
 		for _, c := range n.children {
-			edges = append(edges, connector(n, c))
+			routes = append(routes, connector(n, c))
 		}
 	}
 
@@ -39,27 +40,30 @@ func TestBuildDemoSceneLayout(t *testing.T) {
 	if len(nodes) != wantNodes {
 		t.Fatalf("got %d nodes, want %d", len(nodes), wantNodes)
 	}
-	if len(edges) != wantNodes-1 {
-		t.Fatalf("got %d edges, want %d (a tree has n-1 edges)", len(edges), wantNodes-1)
+	if len(routes) != wantNodes-1 {
+		t.Fatalf("got %d connectors, want %d (a tree has n-1 edges)", len(routes), wantNodes-1)
 	}
 
 	for i, a := range nodes {
-		if a.Width() <= 0 || a.Height() <= 0 {
-			t.Fatalf("box %d has non-positive size %dx%d", i, a.Width(), a.Height())
+		if a.size.Width <= 0 || a.size.Height <= 0 {
+			t.Fatalf("box %d has non-positive size %dx%d", i, a.size.Width, a.size.Height)
 		}
 		for j, b := range nodes {
 			if i == j {
 				continue
 			}
-			if rectsOverlap(a.x, a.y, a.Width(), a.Height(), b.x, b.y, b.Width(), b.Height()) {
+			if a.Bounds().Overlaps(b.Bounds()) {
 				t.Fatalf("boxes %d and %d overlap: %+v vs %+v", i, j, a.Bounds(), b.Bounds())
 			}
 		}
 	}
 
-	for i, e := range edges {
-		if e.x2 <= e.x1 {
-			t.Fatalf("edge %d does not run strictly left to right: %+v", i, e)
+	// render draws connectors as runs of horizontal and vertical lines.
+	for i, r := range routes {
+		for j := 1; j < len(r); j++ {
+			if r[j-1].X != r[j].X && r[j-1].Y != r[j].Y {
+				t.Fatalf("connector %d has a diagonal segment: %+v", i, r)
+			}
 		}
 	}
 }
@@ -86,7 +90,7 @@ func TestLayoutIsBidirectional(t *testing.T) {
 		t.Fatalf("demo tree needs at least 2 root children, has %d", len(root.children))
 	}
 
-	rootCenter := root.y + root.Height()/2
+	rootCenter := root.y + root.size.Height/2
 	for dir, wantRight := range []bool{true, false} {
 		var firstLevel []*node
 		for i, c := range root.children {
@@ -95,17 +99,17 @@ func TestLayoutIsBidirectional(t *testing.T) {
 			}
 			firstLevel = append(firstLevel, c)
 			eachDescendant(c, func(d *node) {
-				if wantRight && d.x < root.x+root.Width()+colGap {
+				if wantRight && d.x < root.x+root.size.Width+colGap {
 					t.Errorf("%q should be right of the root, got x=%d", d.text, d.x)
 				}
-				if !wantRight && d.x+d.Width() > root.x-colGap {
+				if !wantRight && d.x+d.size.Width > root.x-colGap {
 					t.Errorf("%q should be left of the root, got x=%d", d.text, d.x)
 				}
 			})
 		}
 
 		first, last := firstLevel[0], firstLevel[len(firstLevel)-1]
-		mid := (first.y + last.y + last.Height()) / 2
+		mid := (first.y + last.y + last.size.Height) / 2
 		if d := mid - rootCenter; d < -1 || d > 1 {
 			t.Errorf("side (right=%v) first level centered at y=%d, root at y=%d", wantRight, mid, rootCenter)
 		}
@@ -114,7 +118,7 @@ func TestLayoutIsBidirectional(t *testing.T) {
 	// Left-side columns are right-aligned, so siblings share a trunk.
 	left := root.children[1]
 	for _, c := range left.children {
-		if c.x+c.Width() != left.children[0].x+left.children[0].Width() {
+		if c.x+c.size.Width != left.children[0].x+left.children[0].size.Width {
 			t.Errorf("left-side siblings not right-aligned: %+v", left.children)
 		}
 	}
@@ -130,12 +134,14 @@ func TestConnectorMirrorsAcrossSides(t *testing.T) {
 
 	// Cell x on the right mirrors to cell mirror-x on the left, where
 	// mirror is the root's first and last cell summed.
-	mirror := root.x + root.x + root.Width() - 1
+	mirror := root.x + root.x + root.size.Width - 1
 	r, l := connector(root, right), connector(root, left)
-	if r.x1+l.x2 != mirror || r.x2+l.x1 != mirror {
+	rStart, rEnd := r[0], r[len(r)-1]
+	lStart, lEnd := l[0], l[len(l)-1]
+	if rStart.X+lStart.X != mirror || rEnd.X+lEnd.X != mirror {
 		t.Fatalf("connectors not mirrored around the root: right %+v, left %+v", r, l)
 	}
-	if rTrunk, lTrunk := (r.x1+r.x2)/2, (l.x1+l.x2)/2; rTrunk+lTrunk != mirror {
+	if rTrunk, lTrunk := (rStart.X+rEnd.X)/2, (lStart.X+lEnd.X)/2; rTrunk+lTrunk != mirror {
 		t.Fatalf("trunks not mirrored: right x=%d, left x=%d", rTrunk, lTrunk)
 	}
 }
@@ -247,8 +253,8 @@ func TestTidyLayoutRandomTrees(t *testing.T) {
 		for i, a := range all {
 			for _, b := range all[i+1:] {
 				// Boxes sharing any column must also keep rowGap between them.
-				if a.x < b.x+b.Width() && b.x < a.x+a.Width() &&
-					a.y < b.y+b.Height()+rowGap && b.y < a.y+a.Height()+rowGap {
+				if a.x < b.x+b.size.Width && b.x < a.x+a.size.Width &&
+					a.y < b.y+b.size.Height+rowGap && b.y < a.y+a.size.Height+rowGap {
 					t.Fatalf("iter %d: boxes too close: %+v vs %+v", iter, a, b)
 				}
 			}
@@ -259,15 +265,15 @@ func TestTidyLayoutRandomTrees(t *testing.T) {
 				return
 			}
 			for _, c := range n.children {
-				right := c.x == n.x+n.Width()+colGap
-				left := c.x+c.Width()+colGap == n.x
+				right := c.x == n.x+n.size.Width+colGap
+				left := c.x+c.size.Width+colGap == n.x
 				if !right && !left {
 					t.Fatalf("iter %d: child %+v not colGap past its parent %+v", iter, c, n)
 				}
 			}
 			first, last := n.children[0], n.children[len(n.children)-1]
-			span := first.y + last.y + last.Height()
-			if d := 2*n.y + n.Height() - span; d < -2 || d > 2 {
+			span := first.y + last.y + last.size.Height
+			if d := 2*n.y + n.size.Height - span; d < -2 || d > 2 {
 				t.Fatalf("iter %d: parent %+v not centered on children %+v..%+v", iter, n, first, last)
 			}
 		})
@@ -284,8 +290,8 @@ func TestTidyLayoutIsNonLayered(t *testing.T) {
 	if gw.x == gn.x {
 		t.Fatalf("grandchildren share a column (x=%d); each should sit just past its own parent", gw.x)
 	}
-	if gn.x != narrow.x+narrow.Width()+colGap {
-		t.Fatalf("narrow parent's child at x=%d, want %d", gn.x, narrow.x+narrow.Width()+colGap)
+	if gn.x != narrow.x+narrow.size.Width+colGap {
+		t.Fatalf("narrow parent's child at x=%d, want %d", gn.x, narrow.x+narrow.size.Width+colGap)
 	}
 }
 
@@ -305,7 +311,7 @@ func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
 	var gaps []int
 	for i := 1; i < len(parent.children); i++ {
 		prev, cur := parent.children[i-1], parent.children[i]
-		gaps = append(gaps, cur.y-(prev.y+prev.Height()))
+		gaps = append(gaps, cur.y-(prev.y+prev.size.Height))
 	}
 	for _, g := range gaps {
 		if g-gaps[0] < -1 || g-gaps[0] > 1 {

@@ -216,8 +216,8 @@ func TestMarkerPointsWhereChildrenGrow(t *testing.T) {
 	if got := left.marker(); got != "+1 ─" {
 		t.Fatalf("left-side marker = %q, want %q", got, "+1 ─")
 	}
-	if mb := right.markerBounds(); mb.X != right.x+right.Width() {
-		t.Fatalf("right-side marker starts at x=%d, want just past the box at %d", mb.X, right.x+right.Width())
+	if mb := right.markerBounds(); mb.X != right.x+right.size.Width {
+		t.Fatalf("right-side marker starts at x=%d, want just past the box at %d", mb.X, right.x+right.size.Width)
 	}
 	if mb := left.markerBounds(); mb.X+mb.Width != left.x {
 		t.Fatalf("left-side marker ends at x=%d, want just before the box at %d", mb.X+mb.Width, left.x)
@@ -248,7 +248,7 @@ func TestMarkersNeverOverlapBoxes(t *testing.T) {
 			}
 			mb := a.markerBounds()
 			for _, b := range nodes {
-				if rectsOverlap(mb.X, mb.Y, mb.Width, mb.Height, b.x, b.y, b.Width(), b.Height()) {
+				if mb.Overlaps(b.Bounds()) {
 					t.Fatalf("trial %d: marker of %q overlaps box %q", trial, a.text, b.text)
 				}
 			}
@@ -293,7 +293,7 @@ func TestWideMarkerIsLaidOutOfTheWay(t *testing.T) {
 		t.Fatalf("marker %q isn't wider than colGap, so this test proves nothing", a.marker())
 	}
 	for b := range root.All() {
-		if rectsOverlap(mb.X, mb.Y, mb.Width, mb.Height, b.x, b.y, b.Width(), b.Height()) {
+		if mb.Overlaps(b.Bounds()) {
 			t.Fatalf("marker %q overlaps box %q at %+v", a.marker(), b.text, b.Bounds())
 		}
 	}
@@ -328,7 +328,7 @@ func TestMarkerIsDrawnWhenItsBoxIsOffScreen(t *testing.T) {
 	m.setSelectedNode(branch)
 	m = pressSpace(m)
 
-	m.offsetX = branch.x + branch.Width()
+	m.offsetX = branch.x + branch.size.Width
 	m.offsetY = branch.y - 5
 	if out := m.View().Content; !strings.Contains(out, "+2") {
 		t.Fatalf("marker isn't drawn while its box is off screen:\n%s", out)
