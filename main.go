@@ -1,7 +1,11 @@
-// Command bubbletea-exp renders a pannable canvas containing a tree of
-// text boxes, laid out bidirectionally around the root (like Mermaid's
-// tidy-tree mindmaps) with a tree-specialized Sugiyama-style algorithm.
-// Click and drag with the mouse to pan the canvas, like dragging a map.
+// Command hmm is a keyboard-centric terminal mind map editor.
+//
+// This package is the composition root. The node type (tree.go) is the
+// glue between the app's aspects, each of which lives in its own package
+// and declares only what it needs from a node: layout positions boxes and
+// routes connectors, navigator moves the selection, render draws boxes and
+// lines, and storage saves the tree. The Bubble Tea model here wires them
+// together and owns everything interactive: keys, modes and the viewport.
 package main
 
 import (
@@ -17,6 +21,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 
 	"hmm/geom"
+	"hmm/layout"
 	"hmm/navigator"
 	"hmm/render"
 	"hmm/storage"
@@ -46,6 +51,7 @@ type model struct {
 	root                 *node
 	selected             *node // never nil: the tree always has its root
 	nav                  navigator.Navigator[*node]
+	layout               layout.Layout[*node]
 
 	savePath  string // OPML file that writeToFile writes the tree back to
 	statusMsg string // last save result, shown below the canvas until it times out
@@ -121,7 +127,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Button == tea.MouseLeft {
 			if hit := m.markerAt(msg.X, msg.Y); hit != nil {
 				hit.collapsed = false
-				layoutTree(m.root)
+				m.layout.Arrange(m.root)
 				m.setSelectedNode(hit)
 			} else if hit := m.nodeAt(msg.X, msg.Y); hit != nil {
 				m.setSelectedNode(hit)
@@ -237,7 +243,7 @@ func (m *model) moveSelection(query func(*node) *node) {
 // can leave the selection on a box that isn't drawn.
 func (m *model) setSelectedNode(n *node) {
 	if reveal(n) {
-		layoutTree(m.root)
+		m.layout.Arrange(m.root)
 	}
 	m.selected = n
 	m.scrollIntoView(n)
@@ -265,7 +271,7 @@ func (m *model) enterEditMode() {
 // selects the new node.
 func (m *model) addSibling() {
 	sib := addSiblingAfter(m.selected)
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 	m.setSelectedNode(sib)
 }
 
@@ -273,7 +279,7 @@ func (m *model) addSibling() {
 // re-lays-out the tree and selects the new node.
 func (m *model) addChild() {
 	child := addChild(m.selected)
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 	m.setSelectedNode(child)
 }
 
@@ -281,7 +287,7 @@ func (m *model) addChild() {
 // follows it to its new position.
 func (m *model) moveSibling(dir int) {
 	if moveSibling(m.selected, dir) {
-		layoutTree(m.root)
+		m.layout.Arrange(m.root)
 		m.setSelectedNode(m.selected)
 	}
 }
@@ -294,7 +300,7 @@ func (m *model) toggleCollapsed() {
 		return
 	}
 	n.collapsed = !n.collapsed
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 	// The relayout can move n, so re-select it to scroll it back on screen.
 	m.setSelectedNode(n)
 }
@@ -310,7 +316,7 @@ func (m *model) removeCurrentNode() {
 	}
 	target := cmp.Or(prevSibling(n), n.parent)
 	removeNode(n)
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 	m.setSelectedNode(target)
 }
 
@@ -332,7 +338,7 @@ func (m *model) removeIfEmpty() {
 // the layout redraws live as the user types, not just once on commit.
 func (m *model) applyEdit() {
 	m.selected.setText(string(m.editText))
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 	m.setSelectedNode(m.selected)
 }
 
@@ -426,7 +432,7 @@ func (m model) drawCanvas() string {
 	canvas := render.NewCanvas(geom.Rect{X: m.offsetX, Y: m.offsetY, Width: m.viewportW, Height: m.viewportH})
 	for n := range m.root.All() {
 		for _, child := range n.Children() {
-			canvas.Line(connector(n, child))
+			canvas.Line(m.layout.Route(n, child))
 		}
 	}
 	for n := range m.root.All() {
@@ -449,11 +455,14 @@ func (m model) drawCanvas() string {
 }
 
 func newModel(spec storage.Node, savePath string) model {
-	root := buildScene(spec)
+	root := buildTree(spec)
+	lay := layout.Mindmap[*node]{}
+	lay.Arrange(root)
 	return model{
 		root:     root,
 		selected: root,
 		nav:      navigator.Spatial[*node]{},
+		layout:   lay,
 		help:     help.New(),
 		savePath: savePath,
 	}

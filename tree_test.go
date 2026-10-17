@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +8,7 @@ import (
 	"testing"
 
 	"hmm/geom"
+	"hmm/layout"
 	"hmm/navigator"
 	"hmm/storage"
 )
@@ -23,7 +23,7 @@ func TestBuildDemoSceneLayout(t *testing.T) {
 	var routes [][]geom.Point
 	for _, n := range nodes {
 		for _, c := range n.children {
-			routes = append(routes, connector(n, c))
+			routes = append(routes, mindmap.Route(n, c))
 		}
 	}
 
@@ -99,10 +99,10 @@ func TestLayoutIsBidirectional(t *testing.T) {
 			}
 			firstLevel = append(firstLevel, c)
 			eachDescendant(c, func(d *node) {
-				if wantRight && d.x < root.x+root.size.Width+colGap {
+				if wantRight && d.x < root.x+root.size.Width+layout.ColGap {
 					t.Errorf("%q should be right of the root, got x=%d", d.text, d.x)
 				}
-				if !wantRight && d.x+d.size.Width > root.x-colGap {
+				if !wantRight && d.x+d.size.Width > root.x-layout.ColGap {
 					t.Errorf("%q should be left of the root, got x=%d", d.text, d.x)
 				}
 			})
@@ -124,33 +124,11 @@ func TestLayoutIsBidirectional(t *testing.T) {
 	}
 }
 
-func TestConnectorMirrorsAcrossSides(t *testing.T) {
-	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
-		{Text: "right"},
-		{Text: "left"},
-	}})
-	layoutTree(root)
-	right, left := root.children[0], root.children[1]
-
-	// Cell x on the right mirrors to cell mirror-x on the left, where
-	// mirror is the root's first and last cell summed.
-	mirror := root.x + root.x + root.size.Width - 1
-	r, l := connector(root, right), connector(root, left)
-	rStart, rEnd := r[0], r[len(r)-1]
-	lStart, lEnd := l[0], l[len(l)-1]
-	if rStart.X+lStart.X != mirror || rEnd.X+lEnd.X != mirror {
-		t.Fatalf("connectors not mirrored around the root: right %+v, left %+v", r, l)
-	}
-	if rTrunk, lTrunk := (rStart.X+rEnd.X)/2, (lStart.X+lEnd.X)/2; rTrunk+lTrunk != mirror {
-		t.Fatalf("trunks not mirrored: right x=%d, left x=%d", rTrunk, lTrunk)
-	}
-}
-
 func TestMoveSiblingKeepsRootChildrenOnTheirSide(t *testing.T) {
 	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
 		{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"},
 	}})
-	layoutTree(root) // assigns sides: a, c right; b, d left
+	arrange(root) // assigns sides: a, c right; b, d left
 	a := root.children[0]
 
 	if !moveSibling(a, 1) {
@@ -192,7 +170,7 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 		{Text: "right", Children: []storage.Node{{Text: "right child"}}},
 		{Text: "left", Children: []storage.Node{{Text: "left child"}}},
 	}})
-	layoutTree(root)
+	arrange(root)
 	nav := navigator.Tree[*node]{}
 	right, left := root.children[0], root.children[1]
 
@@ -218,116 +196,11 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 	}
 }
 
-// sizedNode builds a node whose unstyled text block is exactly w by h cells,
-// so layout tests can use sizes newNode never produces.
-func sizedNode(w, h int, children ...*node) *node {
-	text := strings.TrimSuffix(strings.Repeat(strings.Repeat("x", w)+"\n", h), "\n")
-	n := &node{children: children}
-	n.setText(text)
-	for _, c := range children {
-		c.parent = n
-	}
-	return n
-}
-
-func TestTidyLayoutRandomTrees(t *testing.T) {
-	rng := rand.New(rand.NewSource(1))
-	var grow func(depth int) *node
-	grow = func(depth int) *node {
-		var children []*node
-		if depth < 5 {
-			for range rng.Intn(5) {
-				children = append(children, grow(depth+1))
-			}
-		}
-		return sizedNode(3+rng.Intn(30), 1+rng.Intn(6), children...)
-	}
-
-	for iter := range 200 {
-		root := grow(0)
-		layoutTree(root)
-
-		var all []*node
-		eachDescendant(root, func(n *node) { all = append(all, n) })
-
-		for i, a := range all {
-			for _, b := range all[i+1:] {
-				// Boxes sharing any column must also keep rowGap between them.
-				if a.x < b.x+b.size.Width && b.x < a.x+a.size.Width &&
-					a.y < b.y+b.size.Height+rowGap && b.y < a.y+a.size.Height+rowGap {
-					t.Fatalf("iter %d: boxes too close: %+v vs %+v", iter, a, b)
-				}
-			}
-		}
-
-		eachDescendant(root, func(n *node) {
-			if n == root || len(n.children) == 0 {
-				return
-			}
-			for _, c := range n.children {
-				right := c.x == n.x+n.size.Width+colGap
-				left := c.x+c.size.Width+colGap == n.x
-				if !right && !left {
-					t.Fatalf("iter %d: child %+v not colGap past its parent %+v", iter, c, n)
-				}
-			}
-			first, last := n.children[0], n.children[len(n.children)-1]
-			span := first.y + last.y + last.size.Height
-			if d := 2*n.y + n.size.Height - span; d < -2 || d > 2 {
-				t.Fatalf("iter %d: parent %+v not centered on children %+v..%+v", iter, n, first, last)
-			}
-		})
-	}
-}
-
-func TestTidyLayoutIsNonLayered(t *testing.T) {
-	wide := sizedNode(30, 1, sizedNode(5, 1))
-	narrow := sizedNode(5, 1, sizedNode(5, 1))
-	root := sizedNode(5, 1, sizedNode(5, 1, wide, narrow))
-	layoutTree(root)
-
-	gw, gn := wide.children[0], narrow.children[0]
-	if gw.x == gn.x {
-		t.Fatalf("grandchildren share a column (x=%d); each should sit just past its own parent", gw.x)
-	}
-	if gn.x != narrow.x+narrow.size.Width+colGap {
-		t.Fatalf("narrow parent's child at x=%d, want %d", gn.x, narrow.x+narrow.size.Width+colGap)
-	}
-}
-
-func TestTidyLayoutSpacesSmallSiblingsEvenly(t *testing.T) {
-	tall := func() *node {
-		var kids []*node
-		for range 8 {
-			kids = append(kids, sizedNode(5, 3))
-		}
-		return sizedNode(5, 3, kids...)
-	}
-	mid := []*node{sizedNode(5, 3), sizedNode(5, 3), sizedNode(5, 3)}
-	parent := sizedNode(5, 3, append(append([]*node{tall()}, mid...), tall())...)
-	root := sizedNode(5, 3, parent)
-	layoutTree(root)
-
-	var gaps []int
-	for i := 1; i < len(parent.children); i++ {
-		prev, cur := parent.children[i-1], parent.children[i]
-		gaps = append(gaps, cur.y-(prev.y+prev.size.Height))
-	}
-	for _, g := range gaps {
-		if g-gaps[0] < -1 || g-gaps[0] > 1 {
-			t.Fatalf("gaps between siblings = %v, want them (nearly) equal", gaps)
-		}
-	}
-	if gaps[0] <= rowGap {
-		t.Fatalf("gaps = %v: the small siblings were packed, not spread", gaps)
-	}
-}
-
 // sidesOf returns the side of each of root's children, by text.
 func sidesOf(root *node) map[string]string {
 	out := map[string]string{}
 	for _, c := range root.children {
-		out[c.text] = map[side]string{sideRight: "right", sideLeft: "left"}[c.side]
+		out[c.text] = map[layout.Side]string{layout.Right: "right", layout.Left: "left"}[c.side]
 	}
 	return out
 }
@@ -336,7 +209,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{
 		{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"},
 	}})
-	layoutTree(root)
+	arrange(root)
 	want := map[string]string{"a": "right", "b": "left", "c": "right", "d": "left"}
 	if got := sidesOf(root); !equalSides(got, want) {
 		t.Fatalf("initial sides = %v, want %v", got, want)
@@ -346,7 +219,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 	// and nobody else moves.
 	sib := addSiblingAfter(root.children[0])
 	sib.setText("a2")
-	layoutTree(root)
+	arrange(root)
 	want["a2"] = "right"
 	if got := sidesOf(root); !equalSides(got, want) {
 		t.Fatalf("after adding a sibling, sides = %v, want %v", got, want)
@@ -354,7 +227,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 
 	// Removing a branch doesn't move the ones after it either.
 	removeNode(root.children[2]) // b
-	layoutTree(root)
+	arrange(root)
 	delete(want, "b")
 	if got := sidesOf(root); !equalSides(got, want) {
 		t.Fatalf("after removing a branch, sides = %v, want %v", got, want)
@@ -364,7 +237,7 @@ func TestSidesStayPutWhenSiblingsChange(t *testing.T) {
 	// and left only d, so it goes left.
 	child := addChild(root)
 	child.setText("e")
-	layoutTree(root)
+	arrange(root)
 	want["e"] = "left"
 	if got := sidesOf(root); !equalSides(got, want) {
 		t.Fatalf("after adding a root child, sides = %v, want %v", got, want)
@@ -385,7 +258,7 @@ func equalSides(a, b map[string]string) bool {
 
 func TestSidesAreNotSaved(t *testing.T) {
 	root := buildTree(storage.Node{Text: "root", Children: []storage.Node{{Text: "a"}, {Text: "b"}}})
-	layoutTree(root)
+	arrange(root)
 
 	path := filepath.Join(t.TempDir(), "tree.opml")
 	if err := storage.SaveOPML(path, root); err != nil {

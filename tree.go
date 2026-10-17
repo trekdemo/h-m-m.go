@@ -6,21 +6,18 @@ import (
 	"slices"
 
 	"hmm/geom"
+	"hmm/layout"
 	"hmm/navigator"
 	"hmm/render"
 	"hmm/storage"
 )
 
-const (
-	colGap = 6 // horizontal gap between a parent and its children (room for connector lines)
-	rowGap = 1 // minimum vertical gap kept between sibling subtrees
-)
-
 // *node is the glue between the app's aspects: each aspect's package
-// declares the slice of a node it needs (navigator.Node, storage.Outline),
-// and *node provides all of them. These declarations stop compiling if it
-// ever stops doing so.
+// declares the slice of a node it needs (navigator.Node, layout.SidedNode,
+// storage.Outline), and *node provides all of them. These declarations stop
+// compiling if it ever stops doing so.
 var (
+	_ layout.Layout[*node]       = layout.Mindmap[*node]{}
 	_ navigator.Navigator[*node] = navigator.Spatial[*node]{}
 	_ navigator.Navigator[*node] = navigator.Tree[*node]{}
 	_ storage.Outline            = (*node)(nil)
@@ -36,7 +33,7 @@ type node struct {
 	color    color.Color
 	parent   *node
 	children []*node
-	side     side // which side of the root this grows on; only set on the root's children
+	side     layout.Side // which side of the root this grows on; only set on the root's children
 
 	// collapsed hides the node's descendants from layout, drawing and
 	// navigation.
@@ -66,6 +63,17 @@ func (n *node) Bounds() geom.Rect {
 	return geom.Rect{X: n.x, Y: n.y, Width: n.size.Width, Height: n.size.Height}
 }
 
+// SetPosition, Side, SetSide and Overhang, with Size, Bounds and Children,
+// make *node a layout.SidedNode.
+func (n *node) SetPosition(p geom.Point) { n.x, n.y = p.X, p.Y }
+
+func (n *node) Side() layout.Side     { return n.side }
+func (n *node) SetSide(s layout.Side) { n.side = s }
+
+// Overhang is the width of n's marker, which sits in the room past n's box
+// where its children would be.
+func (n *node) Overhang() int { return render.Width(n.marker()) }
+
 // marker is drawn beside a collapsed node (see render.Marker), on the side
 // its children would grow on. The count includes every hidden node, not
 // just direct children, to show how much is tucked away. Expanded nodes
@@ -81,7 +89,7 @@ func (n *node) marker() string {
 // same row a connector to its children would leave from, and touching the
 // box on the side the children grow on.
 func (n *node) markerBounds() geom.Rect {
-	w := render.Width(n.marker())
+	w := n.Overhang()
 	x := n.x + n.size.Width
 	if n.growsLeft() {
 		x = n.x - w
@@ -174,7 +182,7 @@ func (n *node) OutlineChildren() []storage.Outline {
 
 // newNode is shared by the initial build and by edits that insert nodes
 // later, so both produce identically styled boxes. Position and tree links
-// are left zero for the caller and layoutTree to fill in.
+// are left zero for the caller and the layout to fill in.
 func newNode(text string, c color.Color) *node {
 	n := &node{color: c}
 	n.setText(text)
@@ -230,7 +238,7 @@ func addSiblingAfter(n *node) *node {
 
 // addChild appends at the end, matching how outliners add children. The
 // child's side is left unset, so a new root branch is placed on whichever
-// side splitSides finds less crowded at the next layout.
+// side the layout finds less crowded next time it runs.
 func addChild(n *node) *node {
 	child := newNode("", childColor(n))
 	child.parent = n
@@ -286,162 +294,4 @@ func removeNode(n *node) *node {
 	parent := n.parent
 	parent.children = slices.DeleteFunc(parent.children, func(c *node) bool { return c == n })
 	return parent
-}
-
-// layoutTree grows the map in both directions from the root, like
-// Mermaid's tidy-tree mindmap layout, so it stays compact instead of
-// sprawling to one side. It pins the root at the origin, so editing never
-// makes it jump, splits the root's branches between the sides (see
-// splitSides), and lays out each side as its own tidy tree (see
-// layoutSide). Callers re-run it over the whole tree after every edit,
-// because one box changing size or a node being added can shift every
-// other box; a full pass is cheap at mindmap sizes and far simpler than
-// patching positions.
-func layoutTree(root *node) {
-	root.x, root.y = 0, 0
-	right, left := splitSides(root.children)
-	layoutSide(root, right, sideRight)
-	layoutSide(root, left, sideLeft)
-}
-
-// side is the direction a half of the tree grows away from the root in.
-// The zero value means a root child hasn't been given a side yet.
-type side int
-
-const (
-	sideRight side = 1
-	sideLeft  side = -1
-)
-
-// splitSides divides the root's children between the two sides, keeping
-// each child on the side it already has so adding, removing or reordering
-// siblings never moves a branch across while the app runs. Sides aren't
-// saved, so a child without one yet (every branch of a freshly loaded
-// tree, or a newly added one) goes to whichever side currently has fewer
-// branches, the right one on a tie: a loaded tree alternates right, left,
-// right... like Mermaid's, and a root with a single child still reads
-// left-to-right.
-func splitSides(children []*node) (right, left []*node) {
-	nRight, nLeft := 0, 0
-	for _, c := range children {
-		switch c.side {
-		case sideRight:
-			nRight++
-		case sideLeft:
-			nLeft++
-		}
-	}
-	for _, c := range children {
-		if c.side == 0 {
-			if nRight <= nLeft {
-				c.side = sideRight
-				nRight++
-			} else {
-				c.side = sideLeft
-				nLeft++
-			}
-		}
-		if c.side == sideRight {
-			right = append(right, c)
-		} else {
-			left = append(left, c)
-		}
-	}
-	return right, left
-}
-
-// layoutSide lays out one side's branches as a non-layered tidy tree (see
-// tidy.go), so each child sits its parent's reach past the parent's far
-// edge rather than in a column shared with every node at its depth, and
-// sibling subtrees pack as closely as rowGap allows. The tidy layout grows
-// downward, so it's fed boxes with their axes swapped (a box's height as
-// tidy width, its width as tidy depth) and the result is rotated back. The
-// branches hang under a virtual root the size of the real one, so the real
-// root lands centered on its first level. The left side mirrors the right
-// around the root, so a parent's children always line up on the edge
-// facing it and their connectors meet at a shared trunk.
-func layoutSide(root *node, children []*node, dir side) {
-	if len(children) == 0 {
-		return
-	}
-
-	var convert func(n *node, y float64) *tidyTree
-	convert = func(n *node, y float64) *tidyTree {
-		t := &tidyTree{
-			n: n,
-			y: y,
-			w: float64(n.size.Height + rowGap),
-			h: float64(n.size.Width + reach(n)),
-		}
-		for _, c := range n.Children() {
-			t.c = append(t.c, convert(c, y+t.h))
-		}
-		return t
-	}
-	virtual := &tidyTree{
-		w: float64(root.size.Height + rowGap),
-		h: float64(root.size.Width + colGap),
-	}
-	for _, c := range children {
-		virtual.c = append(virtual.c, convert(c, virtual.h))
-	}
-
-	tidyLayout(virtual)
-
-	// Shift breadth so the virtual root lands exactly on the real one,
-	// which centers the root on this side's first level.
-	shift := float64(root.y) - virtual.x
-	var place func(t *tidyTree)
-	place = func(t *tidyTree) {
-		n := t.n
-		n.y = floorInt(t.x + shift)
-		depth := int(t.y)
-		if dir == sideRight {
-			n.x = root.x + depth
-		} else {
-			n.x = root.x + root.size.Width - depth - n.size.Width
-		}
-		for _, c := range t.c {
-			place(c)
-		}
-	}
-	for _, c := range virtual.c {
-		place(c)
-	}
-}
-
-// reach is how far past its box a node claims room in the layout. It's
-// usually colGap, the room its connectors need. A collapsed node's marker
-// sits in that room too, so a marker wider than colGap claims its own
-// width plus a cell of space instead, keeping it clear of neighbouring
-// subtrees that the tidy layout would otherwise pack right up against it.
-func reach(n *node) int {
-	return max(colGap, render.Width(n.marker())+1)
-}
-
-// connector routes the line joining the facing middles of a parent and
-// child box, as an elbow that jogs vertically halfway between them.
-// Siblings share a parent end and so a jog column, so their jogs read as
-// branches off one vertical trunk. The child end starts one cell inside
-// the child's box, hidden under it, so the line meets the box without a
-// gap; the left side mirrors the right cell for cell.
-func connector(p, c *node) []geom.Point {
-	x1, x2 := p.x+p.size.Width, c.x
-	if c.x < p.x {
-		x1, x2 = p.x-1, c.x+c.size.Width-1
-	}
-	y1, y2 := p.y+p.size.Height/2, c.y+c.size.Height/2
-	if y1 == y2 {
-		return []geom.Point{{X: x1, Y: y1}, {X: x2, Y: y2}}
-	}
-	mid := (x1 + x2) / 2
-	return []geom.Point{{X: x1, Y: y1}, {X: mid, Y: y1}, {X: mid, Y: y2}, {X: x2, Y: y2}}
-}
-
-// buildScene is the one-call setup for a freshly loaded spec: build the
-// tree and lay it out, so it's ready to draw.
-func buildScene(spec storage.Node) *node {
-	root := buildTree(spec)
-	layoutTree(root)
-	return root
 }

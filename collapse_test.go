@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"hmm/layout"
 	"hmm/storage"
 )
 
@@ -101,7 +102,7 @@ func TestCollapsedNodeNavigatesLikeALeaf(t *testing.T) {
 	m := newCollapseModel(t)
 	branch := m.root.children[0]
 	branch.collapsed = true
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 
 	if got := branch.Children(); got != nil {
 		t.Fatalf("Children() of a collapsed node = %v, want none", got)
@@ -175,7 +176,7 @@ func TestSelectingAHiddenNodeRevealsOnlyItsAncestors(t *testing.T) {
 	bud := twig.children[0]
 	twig.collapsed = true
 	branch.collapsed = true
-	layoutTree(m.root)
+	m.layout.Arrange(m.root)
 
 	m.setSelectedNode(bud)
 	if branch.collapsed || twig.collapsed {
@@ -211,7 +212,7 @@ func TestMarkerPointsWhereChildrenGrow(t *testing.T) {
 	}})
 	right, left := root.children[0], root.children[1]
 	right.collapsed, left.collapsed = true, true
-	layoutTree(root)
+	arrange(root)
 
 	if got := left.marker(); got != "+1 ─" {
 		t.Fatalf("left-side marker = %q, want %q", got, "+1 ─")
@@ -239,7 +240,7 @@ func TestMarkersNeverOverlapBoxes(t *testing.T) {
 			}
 			i++
 		})
-		layoutTree(root)
+		arrange(root)
 
 		nodes := slices.Collect(root.All())
 		for _, a := range nodes {
@@ -286,10 +287,10 @@ func TestWideMarkerIsLaidOutOfTheWay(t *testing.T) {
 	}})
 	a := root.children[0].children[0]
 	a.collapsed = true
-	layoutTree(root)
+	arrange(root)
 
 	mb := a.markerBounds()
-	if mb.Width <= colGap {
+	if mb.Width <= layout.ColGap {
 		t.Fatalf("marker %q isn't wider than colGap, so this test proves nothing", a.marker())
 	}
 	for b := range root.All() {
