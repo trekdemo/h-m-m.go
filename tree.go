@@ -8,6 +8,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 
+	"hmm/geom"
 	"hmm/navigator"
 	"hmm/storage"
 )
@@ -69,13 +70,13 @@ func (n *node) marker() string {
 // markerBounds is where marker is drawn: level with the box's middle, the
 // same row a connector to its children would leave from, and touching the
 // box on the side the children grow on.
-func (n *node) markerBounds() navigator.Rect {
+func (n *node) markerBounds() geom.Rect {
 	w := lipgloss.Width(n.marker())
 	x := n.x + n.Width()
 	if n.growsLeft() {
 		x = n.x - w
 	}
-	return navigator.Rect{X: x, Y: n.y + n.Height()/2, Width: w, Height: 1}
+	return geom.Rect{X: x, Y: n.y + n.Height()/2, Width: w, Height: 1}
 }
 
 // growsLeft reports whether n's children are laid out to its left, which

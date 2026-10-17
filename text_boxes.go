@@ -3,7 +3,7 @@ package main
 import (
 	"iter"
 
-	"hmm/navigator"
+	"hmm/geom"
 
 	lipgloss "charm.land/lipgloss/v2"
 )
@@ -36,8 +36,8 @@ func (b textBox) Render() string { return b.rendered }
 func (b textBox) RenderAsSelected() string { return selectedStyle.Render(b.text) }
 
 // Bounds reports the box's position and rendered size in canvas coordinates.
-func (b textBox) Bounds() navigator.Rect {
-	return navigator.Rect{X: b.x, Y: b.y, Width: b.width, Height: b.height}
+func (b textBox) Bounds() geom.Rect {
+	return geom.Rect{X: b.x, Y: b.y, Width: b.width, Height: b.height}
 }
 
 // BoxesCentroid returns the center point of the bounding box that encloses

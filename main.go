@@ -17,6 +17,7 @@ import (
 	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
+	"hmm/geom"
 	"hmm/navigator"
 	"hmm/storage"
 )
@@ -416,7 +417,7 @@ func (m model) markerAt(x, y int) *node {
 // onScreen reports whether any part of r, in canvas coordinates, falls
 // inside the viewport, so drawing can skip building layers for things
 // that are entirely off screen.
-func (m model) onScreen(r navigator.Rect) bool {
+func (m model) onScreen(r geom.Rect) bool {
 	sx, sy := r.X-m.offsetX, r.Y-m.offsetY
 	return sx+r.Width > 0 && sx < m.viewportW && sy+r.Height > 0 && sy < m.viewportH
 }
