@@ -157,7 +157,7 @@ so OPML exported from other tools looks right straight away.
 
 For the curious, this is how a frame gets drawn:
 
-1. **Layout** ([`tree.go`](tree.go), [`tidy.go`](tidy.go)): the root's
+1. **Layout** ([`layout/`](layout)): the root's
    children are split into a left half and a right half. Each half is laid
    out top-down with the linear-time tidy tree algorithm, then rotated so
    depth runs horizontally away from the root.
@@ -166,13 +166,15 @@ For the curious, this is how a frame gets drawn:
    measured edge to edge and sideways offset is penalised, so the
    selection goes where your eye expects. The node's parent and children
    are preferred over cousins.
-3. **Rendering** ([`main.go`](main.go)): connector lines are collected
+3. **Rendering** ([`render/`](render)): connector lines are collected
    cell by cell, so where several edges meet, the right junction glyph
    (`┤`, `┼`, …) is drawn. Boxes are then composited on top with a Lip
    Gloss canvas, and anything outside the viewport is skipped.
 
-There's a deeper walk-through of the render path in
-[`docs/model-view.md`](docs/model-view.md).
+The node ties these together: each package declares what it needs from a
+node, and the one node type provides it. See
+[`docs/architecture.md`](docs/architecture.md) for how the packages fit
+together and how to add a layout algorithm.
 
 ## Development
 
