@@ -8,13 +8,13 @@ import (
 
 type testNode struct {
 	r        geom.Rect
-	parent   NavNode
-	children []NavNode
+	parent   *testNode
+	children []*testNode
 }
 
-func (t *testNode) Bounds() geom.Rect   { return t.r }
-func (t *testNode) Parent() NavNode     { return t.parent }
-func (t *testNode) Children() []NavNode { return t.children }
+func (t *testNode) Bounds() geom.Rect     { return t.r }
+func (t *testNode) Parent() *testNode     { return t.parent }
+func (t *testNode) Children() []*testNode { return t.children }
 
 // forest hangs nodes that have no parent yet under a shared root, since
 // navigators find candidates by walking the tree. The root's box spans
@@ -43,7 +43,7 @@ func TestSpatialNavigatorVariableWidthColumn(t *testing.T) {
 	short2 := &testNode{r: geom.Rect{X: 10, Y: 4, Width: 6, Height: 1}}
 	far := &testNode{r: geom.Rect{X: 45, Y: 8, Width: 10, Height: 1}}
 	forest(short, long, short2, far)
-	nav := SpatialNavigator{}
+	nav := Spatial[*testNode]{}
 
 	if got := nav.Below(short); got != long {
 		t.Errorf("Below(short) = %+v, want long", got)
@@ -64,7 +64,7 @@ func TestSpatialNavigatorPrefersStraightAhead(t *testing.T) {
 	ahead := &testNode{r: geom.Rect{X: 20, Y: 5, Width: 10, Height: 1}}
 	diagonal := &testNode{r: geom.Rect{X: 16, Y: 9, Width: 10, Height: 1}}
 	forest(cur, ahead, diagonal)
-	nav := SpatialNavigator{}
+	nav := Spatial[*testNode]{}
 
 	if got := nav.RightOf(cur); got != ahead {
 		t.Errorf("RightOf(cur) = %+v, want ahead", got)
@@ -82,7 +82,7 @@ func TestSpatialNavigatorHorizontalSkipsXOverlap(t *testing.T) {
 	child := &testNode{r: geom.Rect{X: 34, Y: 0, Width: 8, Height: 1}}
 	adopt(cur, child)
 	forest(cur, cousin, child)
-	nav := SpatialNavigator{}
+	nav := Spatial[*testNode]{}
 
 	if got := nav.RightOf(cur); got != child {
 		t.Errorf("RightOf(cur) = %+v, want child", got)
@@ -100,7 +100,7 @@ func TestSpatialNavigatorHorizontalPrefersParentOutsideCone(t *testing.T) {
 	child := &testNode{r: geom.Rect{X: 12, Y: 20, Width: 8, Height: 1}}
 	adopt(parent, child)
 	forest(parent, cousin, child)
-	nav := SpatialNavigator{}
+	nav := Spatial[*testNode]{}
 
 	if got := nav.LeftOf(child); got != parent {
 		t.Errorf("LeftOf(child) = %+v, want parent", got)

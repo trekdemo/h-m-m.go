@@ -10,12 +10,21 @@ import (
 	"hmm/geom"
 )
 
-// NavNode is anything that can be navigated between: it knows its own screen
-// position and, for tree-based navigation, its place in a tree.
-type NavNode interface {
+// Node is what a navigator needs from the nodes it moves between: where
+// its box is and its place in a tree. It's a constraint over the caller's
+// own node type N rather than a plain interface, so Parent and Children
+// return the caller's type directly: a node type can satisfy this and other
+// packages' node constraints with one Children method, without copying its
+// children into a slice of interfaces, and callers get their own type back
+// without a type assertion.
+//
+// A root's Parent, and a "nothing in that direction" result, is N's zero
+// value (nil for a pointer type).
+type Node[N any] interface {
+	comparable
 	Bounds() geom.Rect
-	Parent() NavNode
-	Children() []NavNode
+	Parent() N
+	Children() []N
 }
 
 // Navigator answers directional movement queries from a node: which node
@@ -23,24 +32,25 @@ type NavNode interface {
 // implementations can back this with tree structure, box geometry, or
 // anything else, so callers (e.g. keyboard handling) don't need to change
 // when the navigation strategy does.
-type Navigator interface {
-	LeftOf(n NavNode) NavNode
-	RightOf(n NavNode) NavNode
-	Above(n NavNode) NavNode
-	Below(n NavNode) NavNode
+type Navigator[N any] interface {
+	LeftOf(n N) N
+	RightOf(n N) N
+	Above(n N) N
+	Below(n N) N
 }
 
 // treeOf yields every node in the tree n belongs to, in preorder from the
 // root, so navigators can find candidates from n alone instead of being
 // handed a copy of the node set that goes stale after every edit.
-func treeOf(n NavNode) iter.Seq[NavNode] {
-	for n.Parent() != nil {
+func treeOf[N Node[N]](n N) iter.Seq[N] {
+	var none N
+	for n.Parent() != none {
 		n = n.Parent()
 	}
-	return func(yield func(NavNode) bool) { walk(n, yield) }
+	return func(yield func(N) bool) { walk(n, yield) }
 }
 
-func walk(n NavNode, yield func(NavNode) bool) bool {
+func walk[N Node[N]](n N, yield func(N) bool) bool {
 	if !yield(n) {
 		return false
 	}

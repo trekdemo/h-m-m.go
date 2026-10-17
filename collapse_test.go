@@ -10,7 +10,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"hmm/navigator"
 	"hmm/storage"
 )
 
@@ -107,11 +106,11 @@ func TestCollapsedNodeNavigatesLikeALeaf(t *testing.T) {
 	if got := branch.Children(); got != nil {
 		t.Fatalf("Children() of a collapsed node = %v, want none", got)
 	}
-	for _, query := range []func(navigator.NavNode) navigator.NavNode{
+	for _, query := range []func(*node) *node{
 		m.nav.LeftOf, m.nav.RightOf, m.nav.Above, m.nav.Below,
 	} {
-		if got := query(branch); got != nil && got.(*node).parent == branch {
-			t.Fatalf("navigation reached hidden node %q", got.(*node).text)
+		if got := query(branch); got != nil && got.parent == branch {
+			t.Fatalf("navigation reached hidden node %q", got.text)
 		}
 	}
 }

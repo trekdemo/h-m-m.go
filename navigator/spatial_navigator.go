@@ -5,12 +5,12 @@ import (
 	"slices"
 )
 
-// SpatialNavigator implements Navigator using box geometry: each direction is a
+// Spatial implements Navigator using box geometry: each direction is a
 // unit vector, and the nearest node within a 45-degree cone around that
 // vector wins, so "right" only ever finds boxes that actually read as
 // being to the right, not merely at a smaller x. Candidates are the nodes
 // of the tree the starting node belongs to.
-type SpatialNavigator struct{}
+type Spatial[N Node[N]] struct{}
 
 // nearest finds the closest node in direction (dirX, dirY) from n, measured
 // edge to edge rather than center to center, so wide and narrow boxes next to
@@ -27,11 +27,11 @@ type SpatialNavigator struct{}
 // whose lateral gap exceeds the primary distance fall outside a 45-degree
 // cone and are ignored. Lateral offset weighs double, so a box straight
 // ahead beats a slightly nearer one off to the side.
-func (s SpatialNavigator) nearest(n NavNode, dirX, dirY float64) NavNode {
+func (s Spatial[N]) nearest(n N, dirX, dirY float64) N {
 	cur := n.Bounds()
 	cx, cy := cur.Center()
 
-	var best, bestRelative NavNode
+	var none, best, bestRelative N
 	bestScore, bestRelativeScore := math.Inf(1), math.Inf(1)
 	for c := range treeOf(n) {
 		if c == n {
@@ -80,14 +80,14 @@ func (s SpatialNavigator) nearest(n NavNode, dirX, dirY float64) NavNode {
 			best = c
 		}
 	}
-	if bestRelative != nil {
+	if bestRelative != none {
 		return bestRelative
 	}
 	return best
 }
 
 // isRelative reports whether c is n's parent or one of its children.
-func isRelative(n, c NavNode) bool {
+func isRelative[N Node[N]](n, c N) bool {
 	if c == n.Parent() {
 		return true
 	}
@@ -106,7 +106,7 @@ func spanGap(a, aLen, b, bLen int) float64 {
 	return 0
 }
 
-func (s SpatialNavigator) LeftOf(n NavNode) NavNode  { return s.nearest(n, -1, 0) }
-func (s SpatialNavigator) RightOf(n NavNode) NavNode { return s.nearest(n, 1, 0) }
-func (s SpatialNavigator) Above(n NavNode) NavNode   { return s.nearest(n, 0, -1) }
-func (s SpatialNavigator) Below(n NavNode) NavNode   { return s.nearest(n, 0, 1) }
+func (s Spatial[N]) LeftOf(n N) N  { return s.nearest(n, -1, 0) }
+func (s Spatial[N]) RightOf(n N) N { return s.nearest(n, 1, 0) }
+func (s Spatial[N]) Above(n N) N   { return s.nearest(n, 0, -1) }
+func (s Spatial[N]) Below(n N) N   { return s.nearest(n, 0, 1) }

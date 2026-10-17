@@ -18,6 +18,16 @@ const (
 	rowGap = 1 // minimum vertical gap kept between sibling subtrees
 )
 
+// *node is the glue between the app's aspects: each aspect's package
+// declares the slice of a node it needs (navigator.Node, storage.Outline),
+// and *node provides all of them. These declarations stop compiling if it
+// ever stops doing so.
+var (
+	_ navigator.Navigator[*node] = navigator.Spatial[*node]{}
+	_ navigator.Navigator[*node] = navigator.Tree[*node]{}
+	_ storage.Outline            = (*node)(nil)
+)
+
 // node is a treeSpec after box rendering and layout: it carries its
 // rendered box plus the tree structure needed to lay it out and draw
 // connector lines to its children.
@@ -33,16 +43,6 @@ type node struct {
 	// It's view state, so it isn't saved, and it's kept on hidden nodes so
 	// a nested collapse survives its ancestor being collapsed and expanded.
 	collapsed bool
-}
-
-// visibleChildren is what everything on screen sees of n's children:
-// none while n is collapsed. Edits and saving use children directly,
-// because hidden nodes are still part of the map.
-func (n *node) visibleChildren() []*node {
-	if n.collapsed {
-		return nil
-	}
-	return n.children
 }
 
 // canCollapse is false for leaves, which have nothing to hide, and for the
@@ -119,7 +119,7 @@ func (n *node) walk(yield func(*node) bool) bool {
 	if !yield(n) {
 		return false
 	}
-	for _, c := range n.visibleChildren() {
+	for _, c := range n.Children() {
 		if !c.walk(yield) {
 			return false
 		}
@@ -127,33 +127,26 @@ func (n *node) walk(yield func(*node) bool) bool {
 	return true
 }
 
-func (n *node) Parent() navigator.NavNode {
-	if n.parent == nil {
-		return nil
-	}
-	return n.parent
-}
+// Parent and Children make *node a navigator.Node.
+func (n *node) Parent() *node { return n.parent }
 
-// Children only reports visible children, so navigators treat a collapsed
-// node as a leaf and never select a hidden node.
-func (n *node) Children() []navigator.NavNode {
-	visible := n.visibleChildren()
-	if len(visible) == 0 {
+// Children is what everything on screen sees of n's children: none while
+// n is collapsed, so navigators and the layout treat a collapsed node as a
+// leaf and never reach a hidden node. Edits and saving use the children
+// field directly, because hidden nodes are still part of the map.
+func (n *node) Children() []*node {
+	if n.collapsed {
 		return nil
 	}
-	out := make([]navigator.NavNode, len(visible))
-	for i, c := range visible {
-		out[i] = c
-	}
-	return out
+	return n.children
 }
 
 // OutlineText, OutlineColor, and OutlineChildren implement storage.Outline,
 // so a node is saved to OPML directly instead of being converted to an
-// intermediate type first. Like Children, OutlineChildren copies into a new
-// slice because Go can't use a []*node as a slice of interfaces. Unlike
-// Children, it includes hidden children, since collapsing must never drop
-// nodes from the file.
+// intermediate type first. OutlineChildren copies into a new slice because
+// Go can't use a []*node as a slice of interfaces. Unlike Children, it
+// includes hidden children, since collapsing must never drop nodes from
+// the file.
 func (n *node) OutlineText() string { return n.text }
 
 func (n *node) OutlineColor() string { return hexColor(n.color) }
@@ -373,7 +366,7 @@ func layoutSide(root *node, children []*node, dir side) {
 			w: float64(n.Height() + rowGap),
 			h: float64(n.Width() + reach(n)),
 		}
-		for _, c := range n.visibleChildren() {
+		for _, c := range n.Children() {
 			t.c = append(t.c, convert(c, y+t.h))
 		}
 		return t

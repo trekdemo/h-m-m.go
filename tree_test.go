@@ -187,12 +187,12 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 		{Text: "left", Children: []storage.Node{{Text: "left child"}}},
 	}})
 	layoutTree(root)
-	nav := navigator.TreeNavigator{}
+	nav := navigator.Tree[*node]{}
 	right, left := root.children[0], root.children[1]
 
 	cases := []struct {
 		name string
-		got  navigator.NavNode
+		got  *node
 		want *node
 	}{
 		{"right of root", nav.RightOf(root), right},
@@ -203,7 +203,7 @@ func TestTreeNavigatorFollowsSides(t *testing.T) {
 		{"right of left", nav.RightOf(left), root},
 	}
 	for _, c := range cases {
-		if c.got != navigator.NavNode(c.want) {
+		if c.got != c.want {
 			t.Errorf("%s = %v, want %q", c.name, c.got, c.want.text)
 		}
 	}

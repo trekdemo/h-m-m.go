@@ -45,7 +45,7 @@ type model struct {
 	offsetX, offsetY     int // top-left of the viewport, in canvas coordinates
 	root                 *node
 	selected             *node // never nil: the tree always has its root
-	nav                  navigator.Navigator
+	nav                  navigator.Navigator[*node]
 
 	savePath  string // OPML file that writeToFile writes the tree back to
 	statusMsg string // last save result, shown below the canvas until it times out
@@ -221,9 +221,9 @@ func (m *model) setStatus(msg string) tea.Cmd {
 // moveSelection selects the node that query (one of a navigator's directional
 // lookups) finds from the current one, leaving the selection alone when
 // there's nothing in that direction.
-func (m *model) moveSelection(query func(navigator.NavNode) navigator.NavNode) {
+func (m *model) moveSelection(query func(*node) *node) {
 	if target := query(m.selected); target != nil {
-		m.setSelectedNode(target.(*node))
+		m.setSelectedNode(target)
 	}
 }
 
@@ -435,7 +435,7 @@ func (m model) buildCanvas() *lipgloss.Canvas {
 	// edge's rune happened to be drawn last.
 	dirs := map[point]direction{}
 	for n := range m.root.All() {
-		for _, child := range n.visibleChildren() {
+		for _, child := range n.Children() {
 			for _, c := range edgeCells(connector(n, child)) {
 				dirs[point{c.x, c.y}] |= c.dir
 			}
@@ -479,7 +479,7 @@ func newModel(spec storage.Node, savePath string) model {
 	return model{
 		root:     root,
 		selected: root,
-		nav:      navigator.SpatialNavigator{},
+		nav:      navigator.Spatial[*node]{},
 		help:     help.New(),
 		savePath: savePath,
 	}
